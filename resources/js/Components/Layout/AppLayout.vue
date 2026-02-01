@@ -1,5 +1,6 @@
 <script setup>
-import Navbar from './Navbar.vue'
+import Navbar from './Navbar.vue';
+import Footer from './Footer.vue';
 </script>
 
 <template>
@@ -13,8 +14,6 @@ import Navbar from './Navbar.vue'
         </main>
 
         <!-- Footer placeholder -->
-        <div class="py-12 bg-gray-800 text-center">
-            <p class="text-gray-400">Footer coming next...</p>
+        <Footer />
         </div>
-    </div>
 </template>
