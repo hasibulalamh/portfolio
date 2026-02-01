@@ -1,16 +1,12 @@
 <script setup>
 import { ref } from 'vue'
-import { Link } from '@inertiajs/vue3'
+import { Link, usePage } from '@inertiajs/vue3'
 
 const isOpen = ref(false)
 
-const menuItems = [
-    { name: 'Home', href: '/' },
-    { name: 'Projects', href: '#projects' },
-    { name: 'Skills', href: '#skills' },
-    { name: 'Experience', href: '#experience' },
-    { name: 'Contact', href: '#contact' },
-]
+// Get navbar items from shared data
+const { props } = usePage()
+const menuItems = props.navbarItems || []
 </script>
 
 <template>

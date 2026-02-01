@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\NavbarItem;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -34,6 +35,10 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            // Share navbar items globally
+            'navbarItems' => NavbarItem::active()
+                ->ordered()
+                ->get(['name', 'href', 'icon']),
         ];
     }
 }
