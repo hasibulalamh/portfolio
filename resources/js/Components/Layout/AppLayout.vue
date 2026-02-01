@@ -1,22 +1,20 @@
 <script setup>
-import { ref } from 'vue';
+import Navbar from './Navbar.vue'
 </script>
 
 <template>
-    <div class="main-h-screen bg-gray-900 text-white">
-        <div class="h-20 bg-gray-800 flex items-center justify-center">
-            <p class="text-gray-400">navbar is comming</p>
-        </div>
+    <div class="min-h-screen bg-gray-900 text-white">
+        <!-- Navbar -->
+        <Navbar />
 
-       <!-- main Content -->
-        <main >
+        <!-- Main Content  -->
+        <main class="pt-20">
             <slot />
         </main>
 
-        <!-- footer -->
-         <div class="py-12 bg-gray-800 text-center">
-       <p class="text-gray-400">Footer is coming</p>
-
+        <!-- Footer placeholder -->
+        <div class="py-12 bg-gray-800 text-center">
+            <p class="text-gray-400">Footer coming next...</p>
         </div>
     </div>
 </template>
