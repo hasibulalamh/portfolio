@@ -39,6 +39,24 @@ class HandleInertiaRequests extends Middleware
             'navbarItems' => NavbarItem::active()
                 ->ordered()
                 ->get(['name', 'href', 'icon']),
+
+                  // Footer items grouped by category
+        'footerItems' => [
+            'quickLinks' => \App\Models\FooterItem::active()
+                ->byCategory('quick_links')
+                ->ordered()
+                ->get(['name', 'value']),
+
+            'social' => \App\Models\FooterItem::active()
+                ->byCategory('social')
+                ->ordered()
+                ->get(['name', 'value', 'icon']),
+
+            'contact' => \App\Models\FooterItem::active()
+                ->byCategory('contact')
+                ->ordered()
+                ->get(['name', 'value']),
+        ],
         ];
     }
 }
