@@ -6,6 +6,7 @@ use App\Models\NavbarItem;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
+
 class HandleInertiaRequests extends Middleware
 {
     /**
@@ -57,6 +58,8 @@ class HandleInertiaRequests extends Middleware
                 ->ordered()
                 ->get(['name', 'value']),
         ],
+            //hero section settings
+            'heroSettings' => \App\Models\HeroSetting::getActive(),
         ];
     }
 }
