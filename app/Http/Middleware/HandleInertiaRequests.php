@@ -60,6 +60,9 @@ class HandleInertiaRequests extends Middleware
         ],
             //hero section settings
             'heroSettings' => \App\Models\HeroSetting::getActive(),
+
+            //about section settings
+            'aboutSettings' => \App\Models\AboutSetting::active(),
         ];
     }
 }

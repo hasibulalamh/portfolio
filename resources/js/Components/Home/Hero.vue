@@ -120,11 +120,6 @@ const socialLinks = computed(() => page.props.footerItems?.social || [])
             />
           </a>
         </div>
-
-        <!-- Scroll Indicator -->
-        <div class="absolute bottom-10 left-1/2 transform -translate-x-1/2 animate-bounce">
-          <Icon icon="mdi:chevron-down" class="w-8 h-8 text-gray-400" />
-        </div>
       </div>
     </div>
   </section>

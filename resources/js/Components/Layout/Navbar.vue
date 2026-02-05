@@ -23,15 +23,16 @@ const resumeUrl = page.props.heroSettings?.resume_url || null
 
         <!-- Desktop Menu -->
         <div class="hidden md:flex items-center space-x-6">
-          <Link
+          <!-- Changed from Link to <a> for hash navigation -->
+          <a
             v-for="item in menuItems"
             :key="item.name"
             :href="item.href"
-            class="text-gray-300 hover:text-white transition-colors relative group text-sm"
+            class="text-gray-300 hover:text-white transition-colors relative group text-sm cursor-pointer"
           >
             {{ item.name }}
             <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-purple-500 to-pink-500 group-hover:w-full transition-all duration-300"></span>
-          </Link>
+          </a>
 
           <a
             :href="resumeUrl ? `/storage/${resumeUrl}` : '#resume'"
@@ -59,7 +60,8 @@ const resumeUrl = page.props.heroSettings?.resume_url || null
 
       <!-- Mobile Menu -->
       <div v-show="isOpen" class="md:hidden pb-4 space-y-2">
-        <Link
+        <!-- Changed from Link to <a> for hash navigation -->
+        <a
           v-for="item in menuItems"
           :key="item.name"
           :href="item.href"
@@ -67,13 +69,14 @@ const resumeUrl = page.props.heroSettings?.resume_url || null
           @click="isOpen = false"
         >
           {{ item.name }}
-        </Link>
+        </a>
 
         <a
           :href="resumeUrl ? `/storage/${resumeUrl}` : '#resume'"
           :target="resumeUrl ? '_blank' : '_self'"
           :download="resumeUrl ? true : false"
           class="block py-2 px-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-medium text-center hover:shadow-lg transition"
+          @click="isOpen = false"
         >
           Resume
         </a>
