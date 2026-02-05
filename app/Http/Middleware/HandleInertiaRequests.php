@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\NavbarItem;
+use App\Models\SkillSetting as SkillSettingModel;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -63,6 +64,11 @@ class HandleInertiaRequests extends Middleware
 
             //about section settings
             'aboutSettings' => \App\Models\AboutSetting::active(),
+
+            //skills section settings
+           'skills' => \App\Models\Skill::active()
+            ->ordered()
+            ->get(['name', 'category', 'icon', 'color', 'proficiency', 'is_featured']),
         ];
     }
 }
