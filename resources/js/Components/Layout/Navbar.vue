@@ -10,35 +10,35 @@ const resumeUrl = page.props.heroSettings?.resume_url || null
 </script>
 
 <template>
-  <nav class="fixed top-0 w-full bg-gray-900/90 backdrop-blur-lg border-b border-gray-800 z-50">
+  <nav class="fixed top-0 w-full bg-black/90 backdrop-blur-xl border-b border-gray-900 z-50">
     <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
+      <div class="flex items-center justify-between h-20">
 
         <!-- Logo -->
-        <Link href="/" class="text-xl font-bold group">
-          <span class="bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 bg-clip-text text-transparent group-hover:from-orange-500 group-hover:via-pink-500 group-hover:to-purple-500 transition-all duration-500">
-            Hasibul Alam
+        <Link href="/" class="relative group">
+          <span class="text-2xl font-light tracking-tight text-gradient-elegant">
+            {{ page.props.heroSettings?.name?.split(' ')[0] || 'Portfolio' }}
           </span>
+          <div class="absolute -bottom-1 left-0 w-0 h-px bg-gradient-to-r from-amber-500 to-transparent group-hover:w-full transition-all duration-500"></div>
         </Link>
 
         <!-- Desktop Menu -->
-        <div class="hidden md:flex items-center space-x-6">
-          <!-- Changed from Link to <a> for hash navigation -->
-          <a
-            v-for="item in menuItems"
+        <div class="hidden md:flex items-center space-x-12">
+
+          <a  v-for="item in menuItems"
             :key="item.name"
             :href="item.href"
-            class="text-gray-300 hover:text-white transition-colors relative group text-sm cursor-pointer"
+            class="text-sm uppercase tracking-widest text-gray-500 hover:text-amber-500 transition-colors duration-300 relative group"
           >
             {{ item.name }}
-            <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-purple-500 to-pink-500 group-hover:w-full transition-all duration-300"></span>
+            <span class="absolute -bottom-2 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-300"></span>
           </a>
 
           <a
             :href="resumeUrl ? `/storage/${resumeUrl}` : '#resume'"
             :target="resumeUrl ? '_blank' : '_self'"
             :download="resumeUrl ? true : false"
-            class="px-5 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium hover:shadow-lg hover:shadow-purple-500/50 transition-all duration-300 hover:scale-105"
+            class="px-6 py-2 border border-amber-500/30 text-amber-500 hover:bg-amber-500/10 text-sm uppercase tracking-widest transition-all duration-300"
           >
             Resume
           </a>
@@ -47,25 +47,26 @@ const resumeUrl = page.props.heroSettings?.resume_url || null
         <!-- Mobile Menu Button -->
         <button
           @click="isOpen = !isOpen"
-          class="md:hidden text-white p-2 hover:bg-gray-800 rounded-lg transition"
+          class="md:hidden text-gray-500 hover:text-white transition-colors"
         >
-          <svg v-if="!isOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-          </svg>
-          <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
+          <div class="w-6 h-5 flex flex-col justify-between">
+            <span :class="['block h-0.5 bg-current transition-all', isOpen ? 'rotate-45 translate-y-2' : '']"></span>
+            <span :class="['block h-0.5 bg-current transition-all', isOpen ? 'opacity-0' : '']"></span>
+            <span :class="['block h-0.5 bg-current transition-all', isOpen ? '-rotate-45 -translate-y-2' : '']"></span>
+          </div>
         </button>
       </div>
 
       <!-- Mobile Menu -->
-      <div v-show="isOpen" class="md:hidden pb-4 space-y-2">
-        <!-- Changed from Link to <a> for hash navigation -->
-        <a
-          v-for="item in menuItems"
+      <div
+        v-show="isOpen"
+        class="md:hidden py-6 border-t border-gray-900"
+      >
+
+        <a  v-for="item in menuItems"
           :key="item.name"
           :href="item.href"
-          class="block py-2 px-4 text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition"
+          class="block py-3 text-sm uppercase tracking-widest text-gray-500 hover:text-amber-500 transition-colors"
           @click="isOpen = false"
         >
           {{ item.name }}
@@ -75,7 +76,7 @@ const resumeUrl = page.props.heroSettings?.resume_url || null
           :href="resumeUrl ? `/storage/${resumeUrl}` : '#resume'"
           :target="resumeUrl ? '_blank' : '_self'"
           :download="resumeUrl ? true : false"
-          class="block py-2 px-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-medium text-center hover:shadow-lg transition"
+          class="block mt-4 py-3 px-6 text-center border border-amber-500/30 text-amber-500 text-sm uppercase tracking-widest"
           @click="isOpen = false"
         >
           Resume

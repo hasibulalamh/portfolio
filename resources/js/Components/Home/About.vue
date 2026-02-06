@@ -28,6 +28,7 @@ interface PageProps {
 const page = usePage<PageProps>()
 const about = computed(() => page.props.aboutSettings)
 
+// Animated counter
 const animatedYears = ref(0)
 const animatedProjects = ref(0)
 const animatedClients = ref(0)
@@ -65,109 +66,89 @@ onMounted(() => {
 </script>
 
 <template>
-  <section v-if="about" id="about" class="relative py-16 bg-gradient-to-b from-gray-900 to-black">
-    <!-- Decorative line -->
-    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full h-px bg-gradient-to-r from-transparent via-purple-500 to-transparent"></div>
+  <section v-if="about" id="about" class="relative py-24 bg-zinc-950">
+    <!-- Top border -->
+    <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent"></div>
 
     <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl">
 
-      <!-- Section Header (Compact) -->
-      <div class="text-center mb-12">
-        <h2 class="text-3xl md:text-4xl font-bold mb-2">
-          <span class="bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 bg-clip-text text-transparent">
-            {{ about.title }}
-          </span>
+      <!-- Section Header -->
+      <div class="mb-16">
+        <p class="text-sm uppercase tracking-widest text-amber-500 mb-4">About Me</p>
+        <h2 class="text-4xl md:text-5xl font-light text-white mb-4">
+          Crafting Digital <span class="text-gradient-gold">Excellence</span>
         </h2>
-        <div class="w-16 h-1 bg-gradient-to-r from-purple-500 to-pink-500 mx-auto rounded-full"></div>
+        <div class="h-px w-24 bg-gradient-to-r from-amber-500 to-transparent"></div>
       </div>
 
-      <!-- Content (Tighter) -->
-      <div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start mb-12">
+      <!-- Content Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-16">
 
-        <!-- Image (Smaller) -->
-        <div v-if="about.show_image && about.image" class="lg:col-span-2">
-          <div class="relative max-w-xs mx-auto">
-            <div class="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl blur opacity-30"></div>
-            <img
-              :src="`/storage/${about.image}`"
-              :alt="about.title"
-              class="relative w-full rounded-2xl shadow-2xl"
-            />
-          </div>
-        </div>
-
-        <!-- Bio (Compact) -->
-        <div :class="about.show_image && about.image ? 'lg:col-span-3' : 'lg:col-span-5'">
-          <p class="text-base text-gray-300 leading-relaxed mb-6">
+        <!-- Bio -->
+        <div class="lg:col-span-2">
+          <p class="text-lg text-gray-400 leading-relaxed font-light mb-6">
             {{ about.bio }}
           </p>
 
-          <!-- Highlights (Tighter grid) -->
-          <div v-if="about.highlights && about.highlights.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <!-- Highlights -->
+          <div v-if="about.highlights && about.highlights.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div
               v-for="(highlight, index) in about.highlights"
               :key="index"
-              class="flex items-start"
+              class="flex items-start group"
             >
-              <Icon
-                icon="mdi:check-circle"
-                class="w-5 h-5 text-purple-500 mr-2 flex-shrink-0 mt-0.5"
-              />
-              <p class="text-sm text-gray-400">{{ highlight.text }}</p>
+              <div class="w-1 h-1 bg-amber-500 mt-2 mr-3 flex-shrink-0"></div>
+              <p class="text-sm text-gray-500 group-hover:text-gray-300 transition-colors">{{ highlight.text }}</p>
             </div>
+          </div>
+        </div>
+
+        <!-- Image -->
+        <div v-if="about.show_image && about.image" class="relative">
+          <div class="relative">
+            <div class="absolute inset-0 border border-gray-800"></div>
+            <img
+              :src="`/storage/${about.image}`"
+              :alt="about.title"
+              class="w-full grayscale hover:grayscale-0 transition-all duration-700"
+            />
           </div>
         </div>
       </div>
 
-      <!-- Stats (Compact) -->
-      <div v-if="about.show_stats" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <!-- Stats -->
+      <div v-if="about.show_stats" class="grid grid-cols-2 md:grid-cols-4 gap-8">
 
-        <div class="relative group">
-          <div class="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-xl blur"></div>
-          <div class="relative bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-xl p-5 hover:border-purple-500/50 transition-all">
-            <div class="text-3xl md:text-4xl font-bold mb-1">
-              <span class="bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">
-                {{ animatedYears }}+
-              </span>
-            </div>
-            <p class="text-gray-400 text-xs">Years Experience</p>
+        <div class="text-center group">
+          <div class="text-5xl font-light mb-2 text-gradient-gold">
+            {{ animatedYears }}+
           </div>
+          <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
+          <p class="text-sm text-gray-500 uppercase tracking-wider">Years Experience</p>
         </div>
 
-        <div class="relative group">
-          <div class="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-xl blur"></div>
-          <div class="relative bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-xl p-5 hover:border-purple-500/50 transition-all">
-            <div class="text-3xl md:text-4xl font-bold mb-1">
-              <span class="bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">
-                {{ animatedProjects }}+
-              </span>
-            </div>
-            <p class="text-gray-400 text-xs">Projects Done</p>
+        <div class="text-center group">
+          <div class="text-5xl font-light mb-2 text-gradient-gold">
+            {{ animatedProjects }}+
           </div>
+          <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
+          <p class="text-sm text-gray-500 uppercase tracking-wider">Projects Done</p>
         </div>
 
-        <div class="relative group">
-          <div class="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-xl blur"></div>
-          <div class="relative bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-xl p-5 hover:border-purple-500/50 transition-all">
-            <div class="text-3xl md:text-4xl font-bold mb-1">
-              <span class="bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">
-                {{ animatedClients }}+
-              </span>
-            </div>
-            <p class="text-gray-400 text-xs">Happy Clients</p>
+        <div class="text-center group">
+          <div class="text-5xl font-light mb-2 text-gradient-gold">
+            {{ animatedClients }}+
           </div>
+          <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
+          <p class="text-sm text-gray-500 uppercase tracking-wider">Happy Clients</p>
         </div>
 
-        <div class="relative group">
-          <div class="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-xl blur"></div>
-          <div class="relative bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-xl p-5 hover:border-purple-500/50 transition-all">
-            <div class="text-3xl md:text-4xl font-bold mb-1">
-              <span class="bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">
-                {{ animatedTechs }}+
-              </span>
-            </div>
-            <p class="text-gray-400 text-xs">Technologies</p>
+        <div class="text-center group">
+          <div class="text-5xl font-light mb-2 text-gradient-gold">
+            {{ animatedTechs }}+
           </div>
+          <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
+          <p class="text-sm text-gray-500 uppercase tracking-wider">Technologies</p>
         </div>
       </div>
 

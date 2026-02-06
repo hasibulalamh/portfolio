@@ -4,16 +4,14 @@ import Footer from './Footer.vue'
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-900 text-white">
-    <!-- Navbar -->
+  <div class="min-h-screen bg-black text-white">
     <Navbar />
 
-    <!-- Main Content (reduced padding) -->
-    <main class="pt-16">
+    <main class="pt-20">
       <slot />
+      
     </main>
 
-    <!-- Footer -->
     <Footer />
   </div>
 </template>

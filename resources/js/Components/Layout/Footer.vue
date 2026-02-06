@@ -16,9 +16,7 @@ interface FooterItems {
 }
 
 interface PageProps {
-  auth: {
-    user: any
-  }
+  auth: { user: any }
   footerItems?: FooterItems
   [key: string]: any
 }
@@ -36,132 +34,130 @@ const scrollToTop = () => {
 </script>
 
 <template>
-  <footer class="relative bg-gradient-to-b from-gray-900 to-black border-t border-gray-800">
-    <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500 to-transparent"></div>
+  <footer class="relative bg-zinc-950 border-t border-gray-900">
 
     <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="py-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+      <div class="py-16">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
 
-        <!-- Brand Column -->
-        <div class="lg:col-span-2">
-          <h3 class="text-3xl font-bold mb-4">
-            <span class="bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 bg-clip-text text-transparent">
-              Hasibul Alam
-            </span>
-          </h3>
-          <p class="text-gray-400 leading-relaxed mb-6 max-w-md">
-            Full-Stack Web Developer specializing in Laravel, Vue.js, and modern web technologies.
-          </p>
+          <!-- Brand -->
+          <div class="lg:col-span-2">
+            <h3 class="text-3xl font-light mb-4">
+              <span class="text-gradient-elegant">Hasibul Alam</span>
+            </h3>
+            <p class="text-gray-600 leading-relaxed mb-6 max-w-md font-light">
+              Full-Stack Web Developer specializing in Laravel, Vue.js, and modern web technologies.
+            </p>
 
-          <div class="flex flex-wrap gap-2">
-            <span class="px-3 py-1 bg-gray-800 rounded-full text-xs text-purple-400 border border-gray-700">Laravel</span>
-            <span class="px-3 py-1 bg-gray-800 rounded-full text-xs text-green-400 border border-gray-700">Vue.js</span>
-            <span class="px-3 py-1 bg-gray-800 rounded-full text-xs text-blue-400 border border-gray-700">Inertia.js</span>
-            <span class="px-3 py-1 bg-gray-800 rounded-full text-xs text-cyan-400 border border-gray-700">Tailwind</span>
-          </div>
-        </div>
-
-        <!-- Quick Links -->
-        <div>
-          <h3 class="text-lg font-semibold mb-6 text-white flex items-center">
-            <span class="w-1 h-6 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full mr-3"></span>
-            Quick Links
-          </h3>
-          <ul class="space-y-3">
-            <li v-for="link in quickLinks" :key="link.name">
-              <a :href="link.value" class="text-gray-400 hover:text-white transition-colors inline-flex items-center group">
-                <Icon icon="mdi:chevron-right" class="w-4 h-4 mr-2 text-purple-500 opacity-0 group-hover:opacity-100 -ml-6 group-hover:ml-0 transition-all" />
-                {{ link.name }}
-              </a>
-            </li>
-          </ul>
-        </div>
-
-        <!-- Connect -->
-        <div>
-          <h3 class="text-lg font-semibold mb-6 text-white flex items-center">
-            <span class="w-1 h-6 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full mr-3"></span>
-            Connect
-          </h3>
-
-          <!-- Social Icons -->
-          <div v-if="socialLinks.length > 0" class="flex flex-wrap gap-3 mb-6">
-            <a
-              v-for="socialLink in socialLinks"
-              :key="socialLink.name"
-              :href="socialLink.value"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="group relative w-11 h-11 bg-gray-800 rounded-xl flex items-center justify-center hover:bg-gradient-to-br hover:from-purple-500 hover:to-pink-500 transition-all duration-300 border border-gray-700 hover:border-transparent hover:scale-110 hover:shadow-lg hover:shadow-purple-500/50"
-              :title="socialLink.name"
-            >
-              <Icon
-                :icon="socialLink.icon || 'mdi:link'"
-                class="w-5 h-5 text-gray-400 group-hover:text-white transition-colors relative z-10"
-              />
-            </a>
+            <!-- Tech Stack -->
+            <div class="flex flex-wrap gap-2">
+              <span class="px-3 py-1 border border-gray-900 text-xs text-gray-700 uppercase tracking-wider">Laravel</span>
+              <span class="px-3 py-1 border border-gray-900 text-xs text-gray-700 uppercase tracking-wider">Vue.js</span>
+              <span class="px-3 py-1 border border-gray-900 text-xs text-gray-700 uppercase tracking-wider">Inertia</span>
+              <span class="px-3 py-1 border border-gray-900 text-xs text-gray-700 uppercase tracking-wider">Tailwind</span>
+            </div>
           </div>
 
-          <!-- Contact Info -->
-          <div v-if="contactInfo.length > 0" class="space-y-3">
-            <div v-for="info in contactInfo" :key="info.name">
-              <p class="text-xs text-gray-500 mb-1 uppercase tracking-wider">{{ info.name }}</p>
+          <!-- Quick Links -->
+          <div>
+            <p class="text-sm uppercase tracking-widest text-amber-500 mb-6">Navigate</p>
+            <ul class="space-y-3">
+              <li v-for="link in quickLinks" :key="link.name">
+                <a
+                  :href="link.value"
+                  class="text-gray-600 hover:text-amber-500 transition-colors text-sm flex items-center group"
+                >
+                  <span class="w-0 group-hover:w-4 h-px bg-amber-500 mr-0 group-hover:mr-2 transition-all"></span>
+                  {{ link.name }}
+                </a>
+              </li>
+            </ul>
+          </div>
 
+          <!-- Connect -->
+          <div>
+            <p class="text-sm uppercase tracking-widest text-amber-500 mb-6">Connect</p>
+
+            <!-- Social Links -->
+            <div v-if="socialLinks.length > 0" class="flex gap-3 mb-6">
               <a
-                v-if="info.name.toLowerCase().includes('email')"
-                :href="'mailto:' + info.value"
-                class="text-purple-400 hover:text-purple-300 transition-colors flex items-center"
+                v-for="social in socialLinks"
+                :key="social.name"
+                :href="social.value"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="w-10 h-10 border border-gray-900 hover:border-amber-500/50 flex items-center justify-center transition-all group"
+                :title="social.name"
               >
-                <Icon icon="mdi:email" class="w-4 h-4 mr-2" />
-                <span class="text-sm">{{ info.value }}</span>
+                <Icon
+                  :icon="social.icon || 'mdi:link'"
+                  class="w-5 h-5 text-gray-700 group-hover:text-amber-500 transition-colors"
+                />
               </a>
+            </div>
 
-              <a
-                v-else-if="info.name.toLowerCase().includes('phone')"
-                :href="'tel:' + info.value"
-                class="text-purple-400 hover:text-purple-300 transition-colors flex items-center"
-              >
-                <Icon icon="mdi:phone" class="w-4 h-4 mr-2" />
-                <span class="text-sm">{{ info.value }}</span>
-              </a>
+            <!-- Contact Info -->
+            <div v-if="contactInfo.length > 0" class="space-y-3">
+              <div v-for="info in contactInfo" :key="info.name">
+                <p class="text-xs text-gray-700 uppercase tracking-wider mb-1">{{ info.name }}</p>
 
-              <div v-else class="text-purple-400 flex items-center">
-                <Icon icon="mdi:map-marker" class="w-4 h-4 mr-2" />
-                <span class="text-sm">{{ info.value }}</span>
+                <a
+                  v-if="info.name.toLowerCase().includes('email')"
+                  :href="'mailto:' + info.value"
+                  class="text-sm text-gray-600 hover:text-amber-500 transition-colors flex items-center"
+                >
+                  <Icon icon="mdi:email-outline" class="w-4 h-4 mr-2" />
+                  {{ info.value }}
+                </a>
+
+
+                <a  v-else-if="info.name.toLowerCase().includes('phone')"
+                  :href="'tel:' + info.value"
+                  class="text-sm text-gray-600 hover:text-amber-500 transition-colors flex items-center"
+                >
+                  <Icon icon="mdi:phone-outline" class="w-4 h-4 mr-2" />
+                  {{ info.value }}
+                </a>
+
+                <div v-else class="text-sm text-gray-600 flex items-center">
+                  <Icon icon="mdi:map-marker-outline" class="w-4 h-4 mr-2" />
+                  {{ info.value }}
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Divider -->
-      <div class="border-t border-gray-800"></div>
-
       <!-- Bottom Bar -->
-      <div class="py-6 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-        <div class="text-gray-400 text-sm">
-          <p>© {{ currentYear }} <span class="text-white font-semibold">Hasibul Alam</span>. All rights reserved.</p>
-        </div>
+      <div class="border-t border-gray-900 py-8">
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
 
-        <div class="text-gray-400 text-sm flex items-center space-x-2">
-          <span>Built with</span>
-          <span class="text-red-500 animate-pulse">❤️</span>
-          <span>using</span>
-          <span class="text-purple-400 font-semibold">Laravel</span>
-          <span>&</span>
-          <span class="text-green-400 font-semibold">Vue.js</span>
-        </div>
+          <p class="text-sm text-gray-700">
+            © {{ currentYear }} <span class="text-white">Hasibul Alam</span>. All rights reserved.
+          </p>
 
-        <button
-          @click="scrollToTop"
-          class="group flex items-center space-x-2 text-gray-400 hover:text-white transition-colors"
-        >
-          <span class="text-sm">Back to top</span>
-          <Icon icon="mdi:arrow-up" class="w-4 h-4 group-hover:-translate-y-1 transition-transform" />
-        </button>
+          <div class="flex items-center gap-2 text-sm text-gray-700">
+            <span>Crafted with</span>
+            <Icon icon="mdi:heart" class="w-4 h-4 text-amber-500" />
+            <span>using</span>
+            <span class="text-amber-500">Laravel</span>
+            <span>&</span>
+            <span class="text-amber-500">Vue.js</span>
+          </div>
+
+          <button
+            @click="scrollToTop"
+            class="group flex items-center gap-2 text-sm text-gray-700 hover:text-amber-500 transition-colors"
+          >
+            <span class="uppercase tracking-wider">Back to top</span>
+            <Icon icon="mdi:arrow-up" class="w-4 h-4 group-hover:-translate-y-1 transition-transform" />
+          </button>
+        </div>
       </div>
     </div>
 
-    <div class="h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500"></div>
+    <!-- Bottom accent -->
+    <div class="h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent"></div>
   </footer>
 </template>

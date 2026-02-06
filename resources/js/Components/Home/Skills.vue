@@ -39,93 +39,86 @@ const filteredSkills = computed(() => {
 </script>
 
 <template>
-  <section id="skills" class="relative py-12 md:py-16 bg-black">
-    <!-- Decorative line -->
-    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full h-px bg-gradient-to-r from-transparent via-purple-500 to-transparent"></div>
+  <section id="skills" class="relative py-24 bg-black">
+    <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent"></div>
 
     <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl">
 
-      <!-- Section Header -->
-      <div class="text-center mb-10">
-        <h2 class="text-3xl md:text-4xl font-bold mb-2">
-          <span class="bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 bg-clip-text text-transparent">
-            My Skills
-          </span>
+      <!-- Header -->
+      <div class="mb-16">
+        <p class="text-sm uppercase tracking-widest text-amber-500 mb-4">Expertise</p>
+        <h2 class="text-4xl md:text-5xl font-light text-white mb-4">
+          Technical <span class="text-gradient-gold">Skills</span>
         </h2>
-        <p class="text-gray-400 mb-6">Technologies and tools I use to bring ideas to life</p>
-        <div class="w-16 h-1 bg-gradient-to-r from-purple-500 to-pink-500 mx-auto rounded-full"></div>
+        <p class="text-gray-500 mb-6">Technologies and tools I use to bring ideas to life</p>
+        <div class="h-px w-24 bg-gradient-to-r from-amber-500 to-transparent"></div>
       </div>
 
-      <!-- Category Filters -->
-      <div class="flex flex-wrap justify-center gap-3 mb-10">
-        <button
-          v-for="category in categories"
-          :key="category"
-          @click="selectedCategory = category"
-          :class="[
-            'px-5 py-2 rounded-lg text-sm font-medium transition-all duration-300',
-            selectedCategory === category
-              ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/50'
-              : 'bg-gray-800/50 text-gray-400 hover:text-white hover:bg-gray-800'
-          ]"
-        >
-          {{ category }}
-        </button>
+      <!-- Debug: Show if skills loaded -->
+      <div v-if="allSkills.length === 0" class="text-center py-12">
+        <p class="text-gray-500">No skills found. Please add skills in admin panel.</p>
       </div>
 
-      <!-- Skills Grid -->
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        <div
-          v-for="skill in filteredSkills"
-          :key="skill.id"
-          class="group relative"
-        >
-          <!-- Card - Hidden by default, visible on hover -->
-          <div class="absolute inset-0 bg-gray-800/0 group-hover:bg-gray-800/90 backdrop-blur-sm border border-transparent group-hover:border-gray-700 rounded-xl transition-all duration-300 opacity-0 group-hover:opacity-100 z-10">
-            <div class="h-full flex flex-col items-center justify-center p-4">
-              <!-- Skill Name -->
-              <p class="text-white font-semibold text-sm mb-2 text-center">{{ skill.name }}</p>
+      <div v-else>
+        <!-- Filters -->
+        <div class="flex flex-wrap gap-3 mb-12">
+          <button
+            v-for="category in categories"
+            :key="category"
+            @click="selectedCategory = category"
+            :class="[
+              'px-6 py-2 text-sm uppercase tracking-wider transition-all duration-300',
+              selectedCategory === category
+                ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30'
+                : 'border border-gray-800 text-gray-600 hover:border-gray-700 hover:text-gray-400'
+            ]"
+          >
+            {{ category }}
+          </button>
+        </div>
 
-              <!-- Progress Bar -->
-              <div class="w-full bg-gray-700 rounded-full h-1.5 mb-1">
-                <div
-                  class="h-full rounded-full transition-all duration-500"
-                  :style="{
-                    width: skill.proficiency + '%',
-                    background: `linear-gradient(to right, ${skill.color}, #ec4899)`
-                  }"
-                ></div>
-              </div>
+        <!-- Skills Grid -->
+        <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-6">
+          <div
+            v-for="skill in filteredSkills"
+            :key="skill.id"
+            class="group relative aspect-square"
+          >
+            <!-- Card -->
+            <div class="relative h-full border border-gray-900 hover:border-amber-500/30 bg-zinc-950/50 transition-all duration-300 flex flex-col items-center justify-center p-4">
 
-              <!-- Proficiency % -->
-              <p class="text-xs text-gray-400">{{ skill.proficiency }}%</p>
-            </div>
-          </div>
-
-          <!-- Icon - Always visible -->
-          <div class="relative bg-gray-900/50 backdrop-blur-sm border border-gray-800 rounded-xl p-6 hover:border-transparent transition-all duration-300">
-            <div class="flex flex-col items-center">
               <!-- Icon -->
               <Icon
                 :icon="skill.icon"
-                class="w-12 h-12 mb-2 transition-transform duration-300 group-hover:scale-110"
+                class="w-12 h-12 mb-3 transition-all duration-300 group-hover:scale-110"
                 :style="{ color: skill.color }"
               />
 
-              <!-- Skill Name (hidden on hover) -->
-              <p class="text-xs text-gray-400 text-center group-hover:opacity-0 transition-opacity">
+              <!-- Name -->
+              <p class="text-xs text-center text-gray-600 group-hover:text-gray-400 transition-colors">
                 {{ skill.name }}
               </p>
+
+              <!-- Hover overlay -->
+              <div class="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                <div class="w-full">
+                  <div class="h-1 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      class="h-full bg-gradient-to-r from-amber-500 to-yellow-500 transition-all duration-500"
+                      :style="{ width: skill.proficiency + '%' }"
+                    ></div>
+                  </div>
+                  <p class="text-xs text-amber-500 mt-1">{{ skill.proficiency }}%</p>
+                </div>
+              </div>
+
+              <!-- Corner accent -->
+              <div class="absolute top-0 right-0 w-2 h-2 border-t border-r border-amber-500/0 group-hover:border-amber-500 transition-colors"></div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Empty State -->
-      <div v-if="filteredSkills.length === 0" class="text-center py-12">
-        <Icon icon="mdi:code-tags" class="w-16 h-16 mx-auto mb-4 text-gray-600" />
-        <p class="text-gray-400">No skills found in this category</p>
-      </div>
     </div>
   </section>
 </template>
