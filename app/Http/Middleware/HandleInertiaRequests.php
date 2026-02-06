@@ -69,6 +69,11 @@ class HandleInertiaRequests extends Middleware
            'skills' => \App\Models\Skill::active()
             ->ordered()
             ->get(['name', 'category', 'icon', 'color', 'proficiency', 'is_featured']),
+
+            //projects  section
+            'projects' => \App\Models\Project::active()
+            ->ordered()
+            ->get(['id', 'title','slug','description','category','technologies','featured_image','live_url','github_url','is_featured','completed_at']),
         ];
     }
 }
