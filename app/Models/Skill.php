@@ -6,23 +6,23 @@ use Illuminate\Database\Eloquent\Model;
 
 class Skill extends Model
 {
-      protected $fillable = [
+    protected $fillable = [
         'name',
-        'category',
         'icon',
-        'color',
+        'category',
         'proficiency',
+        'color',
         'order',
-        'is_featured',
         'is_active',
     ];
 
     protected $casts = [
-        'is_featured' => 'boolean',
         'is_active' => 'boolean',
+        'proficiency' => 'integer',
+        'order' => 'integer',
     ];
 
-    // Scopes
+    // Scopes (ADD THESE IF MISSING)
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -30,27 +30,11 @@ class Skill extends Model
 
     public function scopeOrdered($query)
     {
-        return $query->orderBy('order')->orderBy('name');
-    }
-
-    public function scopeFeatured($query)
-    {
-        return $query->where('is_featured', true);
+        return $query->orderBy('order');
     }
 
     public function scopeByCategory($query, $category)
     {
         return $query->where('category', $category);
-    }
-
-    // Available categories
-    public static function getCategories()
-    {
-        return [
-            'frontend' => 'Frontend',
-            'backend' => 'Backend',
-            'database' => 'Database',
-            'tools' => 'Tools & Others',
-        ];
     }
 }

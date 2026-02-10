@@ -2,11 +2,8 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\NavbarItem;
-use App\Models\SkillSetting as SkillSettingModel;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
-
 
 class HandleInertiaRequests extends Middleware
 {
@@ -34,46 +31,64 @@ class HandleInertiaRequests extends Middleware
     {
         return [
             ...parent::share($request),
+
             'auth' => [
                 'user' => $request->user(),
             ],
-            // Share navbar items globally
-            'navbarItems' => NavbarItem::active()
+
+            // Navbar items
+            'navbarItems' => \App\Models\NavbarItem::active()
                 ->ordered()
                 ->get(['name', 'href', 'icon']),
 
-                  // Footer items grouped by category
-        'footerItems' => [
-            'quickLinks' => \App\Models\FooterItem::active()
-                ->byCategory('quick_links')
-                ->ordered()
-                ->get(['name', 'value']),
+            // Footer items grouped by category
+            'footerItems' => [
+                'quickLinks' => \App\Models\FooterItem::active()
+                    ->byCategory('quick_links')
+                    ->ordered()
+                    ->get(['name', 'value']),
 
-            'social' => \App\Models\FooterItem::active()
-                ->byCategory('social')
-                ->ordered()
-                ->get(['name', 'value', 'icon']),
+                'social' => \App\Models\FooterItem::active()
+                    ->byCategory('social')
+                    ->ordered()
+                    ->get(['name', 'value', 'icon']),
 
-            'contact' => \App\Models\FooterItem::active()
-                ->byCategory('contact')
-                ->ordered()
-                ->get(['name', 'value']),
-        ],
-            //hero section settings
+                'contact' => \App\Models\FooterItem::active()
+                    ->byCategory('contact')
+                    ->ordered()
+                    ->get(['name', 'value']),
+            ],
+
+            // Hero section settings
             'heroSettings' => \App\Models\HeroSetting::getActive(),
 
-            //about section settings
-            'aboutSettings' => \App\Models\AboutSetting::active(),
+            // About section settings
+            'aboutSettings' => \App\Models\AboutSetting::getActive(),
 
-            //skills section settings
-           'skills' => \App\Models\Skill::active()
-            ->ordered()
-            ->get(['name', 'category', 'icon', 'color', 'proficiency', 'is_featured']),
+            // Skills section
+            'skills' => \App\Models\Skill::active()
+                ->ordered()
+                ->get(['id', 'name', 'category', 'icon', 'color', 'proficiency']),
 
-            //projects  section
+            // Projects section
             'projects' => \App\Models\Project::active()
-            ->ordered()
-            ->get(['id', 'title','slug','description','category','technologies','featured_image','live_url','github_url','is_featured','completed_at']),
+                ->ordered()
+                ->get([
+                    'id',
+                    'title',
+                    'slug',
+                    'description',
+                    'category',
+                    'technologies',
+                    'featured_image',
+                    'live_url',
+                    'github_url',
+                    'is_featured',
+                    'completed_at'
+                ]),
+
+            // Homepage Sections
+            'homepageSections' => \App\Models\SectionSetting::getEnabledSectionsWithData(),
         ];
     }
 }

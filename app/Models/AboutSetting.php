@@ -28,7 +28,14 @@ class AboutSetting extends Model
         'is_active' => 'boolean',
     ];
 
-    public static function active()
+    // Scopes
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    // Get active about settings (ADD THIS METHOD)
+    public static function getActive()
     {
         return self::where('is_active', true)->first();
     }
