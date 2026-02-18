@@ -87,6 +87,26 @@ class HandleInertiaRequests extends Middleware
                     'completed_at'
                 ]),
 
+                // Experience section
+'experiences' => \App\Models\Experience::active()
+    ->ordered()
+    ->get([
+        'id',
+        'type',
+        'title',
+        'company',
+        'company_logo',
+        'location',
+        'start_date',
+        'end_date',
+        'is_current',
+        'description',
+        'responsibilities',
+        'technologies',
+        'achievements',
+        'website_url',
+    ]),
+
             // Homepage Sections
             'homepageSections' => \App\Models\SectionSetting::getEnabledSectionsWithData(),
         ];

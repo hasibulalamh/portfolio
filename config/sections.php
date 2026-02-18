@@ -19,7 +19,7 @@ return [
         'Projects' => 'Project',
 
         // Future Sections (uncomment when needed)
-        // 'Experience' => 'Experience',
+        'Experience' => 'Experience',
         // 'Education' => 'Education',
         // 'Testimonials' => 'Testimonial',
         // 'Services' => 'Service',
