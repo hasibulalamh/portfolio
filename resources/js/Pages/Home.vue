@@ -9,6 +9,7 @@ import About from '@/Components/Home/About.vue'
 import Skills from '@/Components/Home/Skills.vue'
 import Projects from '@/Components/Home/Projects.vue'
 import Experience from '@/Components/Home/Experience.vue'
+import Contact from '@/Components/Home/Contact.vue'
 
 const page = usePage()
 
@@ -19,6 +20,8 @@ const componentMap = {
   Skills,
   Projects,
   Experience,
+  Contact,
+
 }
 
 // Get active sections from database

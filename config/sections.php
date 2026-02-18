@@ -20,6 +20,7 @@ return [
 
         // Future Sections (uncomment when needed)
         'Experience' => 'Experience',
+        'Contact' => 'ContactSetting',
         // 'Education' => 'Education',
         // 'Testimonials' => 'Testimonial',
         // 'Services' => 'Service',
