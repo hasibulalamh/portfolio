@@ -103,17 +103,22 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Image -->
-        <div v-if="about.show_image && about.image" class="relative">
-          <div class="relative">
+       <!-- Image -->
+        <div v-if="about.show_image && about.image" class="relative flex justify-center lg:justify-start">
+        <div class="relative w-64 h-64 lg:w-full lg:h-80">
+            <div class="absolute -inset-2 border border-amber-500/20"></div>
             <div class="absolute inset-0 border border-gray-800"></div>
             <img
-              :src="`/storage/${about.image}`"
-              :alt="about.title"
-              class="w-full grayscale hover:grayscale-0 transition-all duration-700"
+            :src="`/storage/${about.image}`"
+            :alt="about.title"
+            class="w-full h-full object-cover object-top grayscale hover:grayscale-0 transition-all duration-700"
             />
-          </div>
+            <!-- Corner accents -->
+            <div class="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-amber-500"></div>
+            <div class="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-amber-500"></div>
         </div>
+        </div>
+
       </div>
 
       <!-- Stats -->

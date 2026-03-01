@@ -107,29 +107,31 @@ const socialLinks = computed(() => page.props.footerItems?.social || [])
             </div>
           </div>
 
-          <!-- Right: Photo -->
-          <div v-if="hero.show_photo && hero.photo" class="order-1 lg:order-2">
-            <div class="relative">
-              <!-- Decorative border -->
-              <div class="absolute -inset-4 border border-amber-500/20 rounded-sm"></div>
-              <div class="absolute -inset-2 border border-gray-800 rounded-sm"></div>
+            <!-- Right: Photo -->
+            <div v-if="hero.show_photo && hero.photo" class="order-1 lg:order-2 flex justify-center">
+  <div class="relative w-80 h-80 lg:w-96 lg:h-96">
 
-              <!-- Image -->
-              <div class="relative overflow-hidden rounded-sm">
-                <img
-                  :src="`/storage/${hero.photo}`"
-                  :alt="hero.name"
-                  class="w-full h-auto grayscale hover:grayscale-0 transition-all duration-700"
-                />
-              </div>
+    <!-- Decorative borders -->
+    <div class="absolute -inset-4 border border-amber-500/20"></div>
+    <div class="absolute -inset-2 border border-gray-800"></div>
 
-              <!-- Corner accents -->
-              <div class="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-amber-500"></div>
-              <div class="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-amber-500"></div>
+    <!-- Square Image -->
+    <div class="relative w-full h-full overflow-hidden">
+      <img
+        :src="`/storage/${hero.photo}`"
+        :alt="hero.name"
+        class="w-full h-full object-cover object-top grayscale hover:grayscale-0 transition-all duration-700"
+      />
+    </div>
+
+    <!-- Corner accents -->
+    <div class="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-amber-500"></div>
+    <div class="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-amber-500"></div>
+  </div>
             </div>
-          </div>
         </div>
-      </div>
+
+    </div>
     </div>
 
     <!-- Scroll Indicator -->
