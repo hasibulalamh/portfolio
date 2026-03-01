@@ -94,7 +94,7 @@ class HandleInertiaRequests extends Middleware
                 ]),
 
             // Contact section
-            'contactSettings' => \App\Models\ContactSetting::getActive(),
+           'contactSettings' => \App\Models\ContactSetting::getActive(),
 
             // Homepage Sections
             'homepageSections' => \App\Models\SectionSetting::getEnabledSectionsWithData(),

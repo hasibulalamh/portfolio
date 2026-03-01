@@ -1,97 +1,59 @@
 <?php
 
-
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\ContactMessageResource\Pages;
-use App\Models\ContactMessage;
+use App\Filament\Resources\ContactSettingResource\Pages;
+use App\Models\ContactSetting;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Support\Str;
 
-class ContactMessageResource extends Resource
+class ContactSettingResource extends Resource
 {
-    protected static ?string $model = ContactMessage::class;
+    protected static ?string $model = ContactSetting::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-inbox';
-    protected static ?string $navigationLabel = 'Messages';
+    protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
+    protected static ?string $navigationLabel = 'Contact Settings';
     protected static ?string $navigationGroup = 'Contact';
-    protected static ?int $navigationSort = 1;
-
-    // Show unread count badge
-    public static function getNavigationBadge(): ?string
-    {
-        return static::getModel()::unread()->count();
-    }
-
-    public static function getNavigationBadgeColor(): ?string
-    {
-        return static::getModel()::unread()->count() > 0 ? 'danger' : 'success';
-    }
+    protected static ?int $navigationSort = 2;
 
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-              Forms\Components\Section::make('Message Details')
+                Forms\Components\Section::make('Section Content')
                     ->schema([
-                        Forms\Components\TextInput::make('name')
-                            ->required()
-                            ->maxLength(255)
-                            ->disabled(),
+                        Forms\Components\TextInput::make('title')->required()->default('Get In Touch')->maxLength(255),
+                        Forms\Components\TextInput::make('subtitle')->maxLength(255),
+                        Forms\Components\Textarea::make('description')->rows(3)->maxLength(500),
+                    ])->columns(1),
 
-                        Forms\Components\TextInput::make('email')
-                            ->email()
-                            ->required()
-                            ->maxLength(255)
-                            ->disabled()
-                            ->copyable()
-                            ->suffixAction(
-                                Forms\Components\Actions\Action::make('sendEmail')
-                                    ->icon('heroicon-o-envelope')
-                                    ->url(fn ($record) => "mailto:{$record->email}")
-                                    ->openUrlInNewTab()
-                            ),
-
-                        Forms\Components\TextInput::make('subject')
-                            ->maxLength(255)
-                            ->disabled(),
-
-                        Forms\Components\Textarea::make('message')
-                            ->required()
-                            ->rows(8)
-                            ->disabled()
-                            ->columnSpanFull(),
-                    ])
-                    ->columns(2),
-
-                Forms\Components\Section::make('Status & Metadata')
+                Forms\Components\Section::make('Contact Information')
                     ->schema([
-                        Forms\Components\Select::make('status')
+                        Forms\Components\TextInput::make('email')->email()->required()->maxLength(255),
+                        Forms\Components\TextInput::make('phone')->tel()->maxLength(255),
+                        Forms\Components\TextInput::make('address')->maxLength(255),
+                    ])->columns(2),
+
+                Forms\Components\Section::make('Availability Status')
+                    ->schema([
+                        Forms\Components\Select::make('availability_status')
                             ->required()
                             ->options([
-                                'unread' => 'Unread',
-                                'read' => 'Read',
-                                'replied' => 'Replied',
-                                'archived' => 'Archived',
-                            ]),
+                                'available'   => 'Available for Work',
+                                'busy'        => 'Busy / Limited Availability',
+                                'unavailable' => 'Not Available',
+                            ])->default('available'),
+                        Forms\Components\Textarea::make('availability_message')->rows(2)->maxLength(255),
+                    ])->columns(1),
 
-                        Forms\Components\TextInput::make('ip_address')
-                            ->label('IP Address')
-                            ->disabled(),
-
-                        Forms\Components\Placeholder::make('created_at')
-                            ->label('Received At')
-                            ->content(fn ($record) => $record?->created_at?->format('M d, Y h:i A')),
-
-                        Forms\Components\Placeholder::make('read_at')
-                            ->label('Read At')
-                            ->content(fn ($record) => $record?->read_at?->format('M d, Y h:i A') ?? 'Not read yet'),
-                    ])
-                    ->columns(2),
+                Forms\Components\Section::make('Display Settings')
+                    ->schema([
+                        Forms\Components\Toggle::make('show_form')->label('Show Contact Form')->default(true),
+                        Forms\Components\Toggle::make('is_active')->label('Active')->default(true),
+                    ])->columns(2),
             ]);
     }
 
@@ -99,91 +61,28 @@ class ContactMessageResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('name')
-                    ->searchable()
-                    ->sortable()
-                    ->weight('bold')
-                    ->description(fn ($record) => $record->email),
-
-                Tables\Columns\TextColumn::make('subject')
-                    ->searchable()
-                    ->limit(40)
-                    ->description(fn ($record) => Str::limit($record->message, 60)),
-
-                Tables\Columns\TextColumn::make('status')
+                Tables\Columns\TextColumn::make('title')->searchable()->weight('bold'),
+                Tables\Columns\TextColumn::make('email')->copyable()->icon('heroicon-o-envelope'),
+                Tables\Columns\TextColumn::make('phone')->icon('heroicon-o-phone'),
+                Tables\Columns\TextColumn::make('availability_status')
                     ->badge()
-                    ->colors([
-                        'danger' => 'unread',
-                        'success' => 'read',
-                        'info' => 'replied',
-                        'gray' => 'archived',
-                    ])
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('created_at')
-                    ->label('Received')
-                    ->dateTime()
-                    ->sortable()
-                    ->since(),
+                    ->colors(['success' => 'available', 'warning' => 'busy', 'danger' => 'unavailable']),
+                Tables\Columns\IconColumn::make('show_form')->boolean()->label('Form'),
+                Tables\Columns\IconColumn::make('is_active')->boolean()->label('Active'),
             ])
-            ->filters([
-                Tables\Filters\SelectFilter::make('status')
-                    ->options([
-                        'unread' => 'Unread',
-                        'read' => 'Read',
-                        'replied' => 'Replied',
-                        'archived' => 'Archived',
-                    ]),
-            ])
-            ->actions([
-                Tables\Actions\Action::make('markAsRead')
-                    ->label('Mark Read')
-                    ->icon('heroicon-o-check')
-                    ->color('success')
-                    ->visible(fn ($record) => $record->status === 'unread')
-                    ->action(fn ($record) => $record->markAsRead()),
-
-                Tables\Actions\Action::make('reply')
-                    ->label('Reply')
-                    ->icon('heroicon-o-envelope')
-                    ->color('info')
-                    ->url(fn ($record) => "mailto:{$record->email}?subject=Re: {$record->subject}")
-                    ->openUrlInNewTab(),
-
-                Tables\Actions\ViewAction::make(),
-                Tables\Actions\DeleteAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\BulkAction::make('markAsRead')
-                        ->label('Mark as Read')
-                        ->icon('heroicon-o-check')
-                        ->action(fn ($records) => $records->each->markAsRead()),
-
-                    Tables\Actions\BulkAction::make('markAsArchived')
-                        ->label('Archive')
-                        ->icon('heroicon-o-archive-box')
-                        ->action(fn ($records) => $records->each->update(['status' => 'archived'])),
-
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
-            ])
-            ->defaultSort('created_at', 'desc');
+            ->filters([])
+            ->actions([Tables\Actions\EditAction::make()])
+            ->bulkActions([]);
     }
 
-    public static function getRelations(): array
-    {
-        return [
-            //
-        ];
-    }
+    public static function getRelations(): array { return []; }
 
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ListContactMessages::route('/'),
-            'create' => Pages\CreateContactMessage::route('/create'),
-            'edit' => Pages\EditContactMessage::route('/{record}/edit'),
+            'index'  => Pages\ListContactSettings::route('/'),
+            'create' => Pages\CreateContactSetting::route('/create'),
+            'edit'   => Pages\EditContactSetting::route('/{record}/edit'),
         ];
     }
 }
