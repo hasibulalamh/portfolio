@@ -22,7 +22,7 @@ return [
         'Experience' => 'Experience',
         'Contact' => 'ContactSetting',
         // 'Education' => 'Education',
-        // 'Testimonials' => 'Testimonial',
+         'Testimonials' => 'Testimonial',
         // 'Services' => 'Service',
         // 'Contact' => 'ContactForm',
         // 'Blog' => 'Post',

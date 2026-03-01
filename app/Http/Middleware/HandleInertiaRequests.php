@@ -93,6 +93,13 @@ class HandleInertiaRequests extends Middleware
                     'website_url',
                 ]),
 
+                'testimonials' => \App\Models\Testimonial::active()
+                ->ordered()
+                ->get([
+                    'id', 'client_name', 'client_role', 'client_company',
+                    'client_photo', 'content', 'rating', 'project_type', 'date'
+                ]),
+
             // Contact section
            'contactSettings' => \App\Models\ContactSetting::getActive(),
 

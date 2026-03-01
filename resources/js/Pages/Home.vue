@@ -10,6 +10,7 @@ import Skills from '@/Components/Home/Skills.vue'
 import Projects from '@/Components/Home/Projects.vue'
 import Experience from '@/Components/Home/Experience.vue'
 import Contact from '@/Components/Home/Contact.vue'
+import Testimonials from '@/Components/Home/Testimonials.vue'
 
 const page = usePage()
 
@@ -21,6 +22,7 @@ const componentMap = {
   Projects,
   Experience,
   Contact,
+  Testimonials,
 
 }
 
