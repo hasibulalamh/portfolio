@@ -112,7 +112,7 @@ class SectionSetting extends Model
                     'model_name' => $modelName,
                     'section_name' => $componentName,
                     'section_id' => strtolower($componentName),
-                    'order' => $order++,
+                    'order' => config('sections.order.' . $componentName, $order++),
                     'is_enabled' => true,
                 ]
             );

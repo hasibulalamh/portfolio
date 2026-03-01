@@ -1,55 +1,26 @@
 <?php
-
 return [
-    /*
-    |--------------------------------------------------------------------------
-    | Homepage Section Mappings
-    |--------------------------------------------------------------------------
-    |
-    | Map Vue component names to their corresponding Laravel models.
-    | Add new sections here when creating new homepage components.
-    |
-    */
-
     'mappings' => [
-        // Core Sections
-        'Hero' => 'HeroSetting',
-        'About' => 'AboutSetting',
-        'Skills' => 'Skill',
-        'Projects' => 'Project',
-
-        // Future Sections (uncomment when needed)
-        'Experience' => 'Experience',
-        'Contact' => 'ContactSetting',
-        // 'Education' => 'Education',
-         'Testimonials' => 'Testimonial',
-        // 'Services' => 'Service',
-        // 'Contact' => 'ContactForm',
-        // 'Blog' => 'Post',
-        // 'Certifications' => 'Certification',
-        // 'Awards' => 'Award',
+        'Hero'         => 'HeroSetting',
+        'About'        => 'AboutSetting',
+        'Skills'       => 'Skill',
+        'Experience'   => 'Experience',
+        'Projects'     => 'Project',
+        'Testimonials' => 'Testimonial',
+        'Contact'      => 'ContactSetting',
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Component Path
-    |--------------------------------------------------------------------------
-    |
-    | The directory path where homepage section components are located.
-    |
-    */
+    // ← এটা নতুন add করো
+    'order' => [
+        'Hero'         => 1,
+        'About'        => 2,
+        'Skills'       => 3,
+        'Experience'   => 4,
+        'Projects'     => 5,
+        'Testimonials' => 6,
+        'Contact'      => 7,
+    ],
 
     'component_path' => resource_path('js/Components/Home'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Auto-Sync on Boot
-    |--------------------------------------------------------------------------
-    |
-    | Automatically sync sections when application boots.
-    | Disable in production for better performance.
-    |
-    */
-
     'auto_sync' => env('SECTIONS_AUTO_SYNC', false),
 ];
