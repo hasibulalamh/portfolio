@@ -100,6 +100,17 @@ class HandleInertiaRequests extends Middleware
                     'client_photo', 'content', 'rating', 'project_type', 'date'
                 ]),
 
+                //services
+                'services' => \App\Models\Service::active()
+                    ->orderBy('order')
+                    ->orderBy('created_at')
+                    ->get([
+                    'id', 'title', 'slug', 'icon',
+                    'short_description', 'technologies',
+                    'scope_type', 'scope_description',
+                    'pricing_note', 'min_duration',
+                    'max_duration', 'is_featured'
+                    ]),
             // Contact section
            'contactSettings' => \App\Models\ContactSetting::getActive(),
 

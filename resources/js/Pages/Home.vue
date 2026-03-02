@@ -11,6 +11,7 @@ import Projects from '@/Components/Home/Projects.vue'
 import Experience from '@/Components/Home/Experience.vue'
 import Contact from '@/Components/Home/Contact.vue'
 import Testimonials from '@/Components/Home/Testimonials.vue'
+import Services from '@/Components/Home/Services.vue'
 
 const page = usePage()
 
@@ -23,6 +24,7 @@ const componentMap = {
   Experience,
   Contact,
   Testimonials,
+  Services,
 
 }
 
