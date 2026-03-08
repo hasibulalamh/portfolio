@@ -111,6 +111,12 @@ class HandleInertiaRequests extends Middleware
                     'pricing_note', 'min_duration',
                     'max_duration', 'is_featured'
                     ]),
+
+                    // Social links
+                    'social_links' => \App\Models\SocialLink::active()
+                    ->get(['platform', 'url', 'icon', 'color', 'show_in_hero', 'show_in_contact', 'show_in_footer'
+                        ]),
+
             // Contact section
            'contactSettings' => \App\Models\ContactSetting::getActive(),
 

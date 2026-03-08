@@ -15,24 +15,31 @@ interface HeroSettings {
   secondary_cta_url: string
   show_photo: boolean
   show_social_links: boolean
+  show_availability: boolean
+  is_available: boolean
+  availability_text: string
 }
 
-interface FooterItem {
-  name: string
-  value: string
+interface SocialLink {
+  platform: string
+  url: string
   icon?: string
+  color?: string
+  show_in_hero: boolean
 }
 
 interface PageProps {
   auth: { user: any }
   heroSettings?: HeroSettings
-  footerItems?: { social: FooterItem[] }
+  social_links?: SocialLink[]
   [key: string]: any
 }
 
 const page = usePage<PageProps>()
 const hero = computed(() => page.props.heroSettings)
-const socialLinks = computed(() => page.props.footerItems?.social || [])
+const socialLinks = computed(() =>
+  (page.props.social_links || []).filter(s => s.show_in_hero)
+)
 </script>
 
 <template>
@@ -50,6 +57,30 @@ const socialLinks = computed(() => page.props.footerItems?.social || [])
 
           <!-- Left: Content -->
           <div class="text-left order-2 lg:order-1">
+
+            <!-- Availability Badge -->
+            <div v-if="hero.show_availability" class="mb-6 inline-flex items-center gap-2">
+              <div class="flex items-center gap-2 px-4 py-2 rounded-full border"
+                :class="hero.is_available
+                  ? 'border-green-500/30 bg-green-500/10'
+                  : 'border-red-500/30 bg-red-500/10'"
+              >
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                    :class="hero.is_available ? 'bg-green-400' : 'bg-red-400'"
+                  ></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2"
+                    :class="hero.is_available ? 'bg-green-500' : 'bg-red-500'"
+                  ></span>
+                </span>
+                <span class="text-xs font-medium tracking-wider uppercase"
+                  :class="hero.is_available ? 'text-green-400' : 'text-red-400'"
+                >
+                  {{ hero.availability_text }}
+                </span>
+              </div>
+            </div>
+
             <!-- Name -->
             <h1 class="text-5xl md:text-6xl lg:text-7xl font-light mb-6 tracking-tight">
               <span class="text-gradient-elegant font-extralight">{{ hero.name }}</span>
@@ -70,14 +101,12 @@ const socialLinks = computed(() => page.props.footerItems?.social || [])
 
             <!-- CTA Buttons -->
             <div class="flex flex-col sm:flex-row gap-4 mb-8">
-
-              <a  :href="hero.primary_cta_url"
+              <a :href="hero.primary_cta_url"
                 class="group px-8 py-4 bg-gradient-to-r from-amber-600 to-yellow-600 text-black font-medium rounded-sm hover:from-amber-500 hover:to-yellow-500 transition-all duration-300 flex items-center justify-center"
               >
                 {{ hero.primary_cta_text }}
                 <Icon icon="mdi:arrow-right" class="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </a>
-
 
               <a :href="hero.resume_url ? `/storage/${hero.resume_url}` : hero.secondary_cta_url"
                 :target="hero.resume_url ? '_blank' : '_self'"
@@ -91,13 +120,13 @@ const socialLinks = computed(() => page.props.footerItems?.social || [])
             <!-- Social Links -->
             <div v-if="hero.show_social_links && socialLinks.length > 0" class="flex gap-4">
 
-             <a   v-for="social in socialLinks"
-                :key="social.name"
-                :href="social.value"
+              <a  v-for="social in socialLinks"
+                :key="social.platform"
+                :href="social.url"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="w-10 h-10 border border-gray-800 hover:border-amber-500/50 flex items-center justify-center transition-all duration-300 group rounded-sm"
-                :title="social.name"
+                :title="social.platform"
               >
                 <Icon
                   :icon="social.icon || 'mdi:link'"
@@ -107,31 +136,25 @@ const socialLinks = computed(() => page.props.footerItems?.social || [])
             </div>
           </div>
 
-            <!-- Right: Photo -->
-            <div v-if="hero.show_photo && hero.photo" class="order-1 lg:order-2 flex justify-center">
-  <div class="relative w-80 h-80 lg:w-96 lg:h-96">
-
-    <!-- Decorative borders -->
-    <div class="absolute -inset-4 border border-amber-500/20"></div>
-    <div class="absolute -inset-2 border border-gray-800"></div>
-
-    <!-- Square Image -->
-    <div class="relative w-full h-full overflow-hidden">
-      <img
-        :src="`/storage/${hero.photo}`"
-        :alt="hero.name"
-        class="w-full h-full object-cover object-top grayscale hover:grayscale-0 transition-all duration-700"
-      />
-    </div>
-
-    <!-- Corner accents -->
-    <div class="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-amber-500"></div>
-    <div class="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-amber-500"></div>
-  </div>
+          <!-- Right: Photo -->
+          <div v-if="hero.show_photo && hero.photo" class="order-1 lg:order-2 flex justify-center">
+            <div class="relative w-80 h-80 lg:w-96 lg:h-96">
+              <div class="absolute -inset-4 border border-amber-500/20"></div>
+              <div class="absolute -inset-2 border border-gray-800"></div>
+              <div class="relative w-full h-full overflow-hidden">
+                <img
+                  :src="`/storage/${hero.photo}`"
+                  :alt="hero.name"
+                  class="w-full h-full object-cover object-top grayscale hover:grayscale-0 transition-all duration-700"
+                />
+              </div>
+              <div class="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-amber-500"></div>
+              <div class="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-amber-500"></div>
             </div>
-        </div>
+          </div>
 
-    </div>
+        </div>
+      </div>
     </div>
 
     <!-- Scroll Indicator -->

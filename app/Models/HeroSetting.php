@@ -1,7 +1,5 @@
 <?php
-
 namespace App\Models;
-
 use Illuminate\Database\Eloquent\Model;
 
 class HeroSetting extends Model
@@ -18,16 +16,20 @@ class HeroSetting extends Model
         'secondary_cta_url',
         'show_photo',
         'show_social_links',
+        'show_availability',
+        'is_available',
+        'availability_text',
         'is_active',
     ];
 
     protected $casts = [
-        'show_photo' => 'boolean',
-        'show_social_links' => 'boolean',
-        'is_active' => 'boolean',
+        'show_photo'         => 'boolean',
+        'show_social_links'  => 'boolean',
+        'show_availability'  => 'boolean',
+        'is_available'       => 'boolean',
+        'is_active'          => 'boolean',
     ];
 
-    // Get active hero settings
     public static function getActive()
     {
         return self::where('is_active', true)->first();
