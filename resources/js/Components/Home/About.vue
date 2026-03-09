@@ -121,6 +121,32 @@ onMounted(() => {
 
       </div>
 
+      <!-- GitHub Activity -->
+      <div class="mb-16">
+        <div class="flex items-center gap-4 mb-6">
+          <div class="h-px w-8 bg-amber-500/50"></div>
+          <p class="text-xs uppercase tracking-widest text-amber-500">GitHub Activity</p>
+        </div>
+        <div class="border border-gray-900 p-4 overflow-hidden">
+          <img
+            src="https://ghchart.rshah.org/d97706/HASIBULALAMH"
+            alt="GitHub Activity Graph"
+            class="w-full opacity-80 hover:opacity-100 transition-opacity duration-300"
+          />
+        </div>
+        <div class="flex gap-6 mt-4">
+          <a
+            href="https://github.com/HASIBULALAMH"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center gap-2 text-sm text-gray-600 hover:text-amber-500 transition-colors"
+          >
+            <Icon icon="mdi:github" class="w-4 h-4" />
+            View GitHub Profile
+          </a>
+        </div>
+      </div>
+
       <!-- Stats -->
       <div v-if="about.show_stats" class="grid grid-cols-2 md:grid-cols-4 gap-8">
 
