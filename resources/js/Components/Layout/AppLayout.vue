@@ -3,6 +3,7 @@ import Navbar from './Navbar.vue'
 import Footer from './Footer.vue'
 import BackToTop from '../UI/BackToTop.vue'
 import PageLoader from '../UI/PageLoader.vue'
+import WhatsAppButton from '../UI/WhatsAppButton.vue'
 </script>
 
 <template>
@@ -14,5 +15,6 @@ import PageLoader from '../UI/PageLoader.vue'
     </main>
     <Footer />
     <BackToTop />
+    <WhatsAppButton />
   </div>
 </template>
