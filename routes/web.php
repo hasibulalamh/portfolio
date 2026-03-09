@@ -34,3 +34,23 @@ Route::get('/robots.txt', function () {
 Route::post('/2fa', function (\Illuminate\Http\Request $request) {
     return redirect('/halam-panel');
 })->middleware(['web', '2fa']);
+
+// Project detail / Case study
+Route::get('/projects/{slug}', function ($slug) {
+    $project = \App\Models\Project::where('slug', $slug)
+        ->where('is_active', true)
+        ->firstOrFail();
+
+    $related = \App\Models\Project::where('is_active', true)
+        ->where('id', '!=', $project->id)
+        ->where(function($q) use ($project) {
+            $q->where('category', $project->category);
+        })
+        ->limit(3)
+        ->get();
+
+    return Inertia::render('ProjectDetail', [
+        'project' => $project,
+        'related' => $related,
+    ]);
+})->name('project.show');

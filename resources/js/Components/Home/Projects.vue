@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
+import { Link } from '@inertiajs/vue3'
 import { usePage } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 
@@ -196,9 +197,9 @@ function setTech(tech: string) {
                   {{ getCategoryLabel(project.category) }}
                 </p>
 
-                <h3 class="text-xl font-light text-white mb-3 group-hover:text-gradient-gold transition-colors">
-                  {{ project.title }}
-                </h3>
+           <Link :href="`/projects/${project.slug}`" class="text-xl font-light text-white mb-3 group-hover:text-amber-500 transition-colors block">
+                {{ project.title }}
+                </Link>
 
                 <p class="text-sm text-gray-500 leading-relaxed mb-4 line-clamp-3">
                   {{ project.description }}
