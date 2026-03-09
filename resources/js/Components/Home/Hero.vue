@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
 import { usePage } from '@inertiajs/vue3'
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 
 interface HeroSettings {
   name: string
@@ -40,6 +40,51 @@ const hero = computed(() => page.props.heroSettings)
 const socialLinks = computed(() =>
   (page.props.social_links || []).filter(s => s.show_in_hero)
 )
+
+// Typing animation
+const typingTexts = [
+  'Full Stack Web Developer',
+  'Laravel Specialist',
+  'Vue.js Developer',
+  'Inertia.js Expert',
+  'API Developer',
+]
+
+const displayText = ref('')
+const currentIndex = ref(0)
+const isDeleting = ref(false)
+let typingTimer: ReturnType<typeof setTimeout> | null = null
+
+function type() {
+  const current = typingTexts[currentIndex.value]
+
+  if (isDeleting.value) {
+    displayText.value = current.substring(0, displayText.value.length - 1)
+  } else {
+    displayText.value = current.substring(0, displayText.value.length + 1)
+  }
+
+  let speed = isDeleting.value ? 60 : 100
+
+  if (!isDeleting.value && displayText.value === current) {
+    speed = 2000
+    isDeleting.value = true
+  } else if (isDeleting.value && displayText.value === '') {
+    isDeleting.value = false
+    currentIndex.value = (currentIndex.value + 1) % typingTexts.length
+    speed = 400
+  }
+
+  typingTimer = setTimeout(type, speed)
+}
+
+onMounted(() => {
+  typingTimer = setTimeout(type, 800)
+})
+
+onUnmounted(() => {
+  if (typingTimer) clearTimeout(typingTimer)
+})
 </script>
 
 <template>
@@ -86,11 +131,11 @@ const socialLinks = computed(() =>
               <span class="text-gradient-elegant font-extralight">{{ hero.name }}</span>
             </h1>
 
-            <!-- Tagline -->
+            <!-- Tagline with Typing Animation -->
             <div class="mb-6">
               <div class="h-px w-16 bg-gradient-to-r from-amber-500 to-transparent mb-4"></div>
-              <p class="text-xl md:text-2xl text-gray-400 font-light">
-                {{ hero.tagline }}
+              <p class="text-xl md:text-2xl text-gray-400 font-light min-h-[2rem]">
+                {{ displayText }}<span class="inline-block w-0.5 h-6 bg-amber-500 ml-1 animate-pulse align-middle"></span>
               </p>
             </div>
 
