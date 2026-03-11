@@ -2,27 +2,34 @@
 import { Icon } from '@iconify/vue'
 import { Link } from '@inertiajs/vue3'
 import AppLayout from '@/Components/Layout/AppLayout.vue'
+import { ref } from 'vue'
 
 interface Project {
   id: number
   title: string
   slug: string
   description: string
+  long_description?: string
+  problem_description?: string
+  problem_image?: string
+  solution_description?: string
   category: string
   technologies: string[]
   featured_image?: string
+  gallery_images?: string[]
   live_url?: string
   github_url?: string
+  client_name?: string
   is_featured: boolean
   completed_at?: string
-  responsibilities?: string[]
-  achievements?: string[]
 }
 
 const props = defineProps<{
   project: Project
   related: Project[]
 }>()
+
+const activeImage = ref(props.project.featured_image || null)
 
 const getCategoryLabel = (cat: string) => {
   const labels: Record<string, string> = {
@@ -42,27 +49,26 @@ const getCategoryLabel = (cat: string) => {
     <div class="min-h-screen bg-black text-white">
 
       <!-- Hero -->
-      <div class="relative h-[50vh] min-h-[400px] overflow-hidden">
+      <div class="relative h-[55vh] min-h-[420px] overflow-hidden">
         <img
-          v-if="project.featured_image"
-          :src="`/storage/${project.featured_image}`"
+          v-if="activeImage"
+          :src="`/storage/${activeImage}`"
           :alt="project.title"
-          class="w-full h-full object-cover grayscale opacity-40"
+          class="w-full h-full object-cover opacity-40"
         />
         <div v-else class="w-full h-full bg-gradient-to-br from-gray-900 to-black"></div>
-
-        <!-- Overlay -->
         <div class="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
 
-        <!-- Content -->
         <div class="absolute inset-0 flex items-end">
-          <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl pb-12">
-
-            <!-- Back -->
+          <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl pb-12">
             <Link href="/#projects" class="inline-flex items-center gap-2 text-gray-500 hover:text-amber-500 transition-colors text-sm mb-6">
               <Icon icon="mdi:arrow-left" class="w-4 h-4" />
               Back to Projects
             </Link>
+
+            <div v-if="project.is_featured" class="inline-block px-3 py-1 bg-amber-500/20 border border-amber-500/50 text-amber-500 text-xs uppercase tracking-wider mb-3">
+              Featured
+            </div>
 
             <p class="text-xs uppercase tracking-widest text-amber-500 mb-3">
               {{ getCategoryLabel(project.category) }}
@@ -86,76 +92,113 @@ const getCategoryLabel = (cat: string) => {
       </div>
 
       <!-- Main Content -->
-      <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl py-16">
+      <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl py-16">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-12">
 
-          <!-- Left: Details -->
+          <!-- Left: Main Content -->
           <div class="lg:col-span-2 space-y-12">
 
             <!-- Overview -->
             <div>
-              <h2 class="text-xs uppercase tracking-widest text-amber-500 mb-4">Overview</h2>
+              <h2 class="text-xs uppercase tracking-widest text-amber-500 mb-3">Overview</h2>
               <div class="h-px w-12 bg-amber-500/30 mb-6"></div>
-              <p class="text-gray-400 leading-relaxed text-lg">
-                {{ project.description }}
-              </p>
+              <p class="text-gray-400 leading-relaxed text-lg">{{ project.description }}</p>
+              <div v-if="project.long_description" class="mt-4 text-gray-500 leading-relaxed prose prose-invert max-w-none" v-html="project.long_description"></div>
             </div>
 
-            <!-- Responsibilities -->
-            <div v-if="project.responsibilities && project.responsibilities.length > 0">
-              <h2 class="text-xs uppercase tracking-widest text-amber-500 mb-4">What I Did</h2>
+            <!-- Problem & Solution -->
+            <div v-if="project.problem_description || project.solution_description">
+              <h2 class="text-xs uppercase tracking-widest text-amber-500 mb-3">Case Study</h2>
               <div class="h-px w-12 bg-amber-500/30 mb-6"></div>
-              <ul class="space-y-3">
-                <li
-                  v-for="item in project.responsibilities"
-                  :key="item"
-                  class="flex items-start gap-3 text-gray-400"
-                >
-                  <Icon icon="mdi:chevron-right" class="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
-                  <span>{{ item }}</span>
-                </li>
-              </ul>
+
+              <!-- Problem -->
+              <div v-if="project.problem_description" class="mb-8">
+                <div class="flex items-center gap-3 mb-4">
+                  <div class="w-8 h-8 bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+                    <Icon icon="mdi:alert-circle-outline" class="w-4 h-4 text-red-400" />
+                  </div>
+                  <h3 class="text-white font-light uppercase tracking-wider text-sm">The Problem</h3>
+                </div>
+                <p class="text-gray-400 leading-relaxed mb-4">{{ project.problem_description }}</p>
+                <div v-if="project.problem_image" class="mt-4 border border-gray-800 overflow-hidden">
+                  <img
+                    :src="`/storage/${project.problem_image}`"
+                    alt="Problem illustration"
+                    class="w-full object-cover"
+                  />
+                </div>
+              </div>
+
+              <!-- Solution -->
+              <div v-if="project.solution_description">
+                <div class="flex items-center gap-3 mb-4">
+                  <div class="w-8 h-8 bg-green-500/10 border border-green-500/30 flex items-center justify-center">
+                    <Icon icon="mdi:check-circle-outline" class="w-4 h-4 text-green-400" />
+                  </div>
+                  <h3 class="text-white font-light uppercase tracking-wider text-sm">The Solution</h3>
+                </div>
+                <p class="text-gray-400 leading-relaxed">{{ project.solution_description }}</p>
+              </div>
             </div>
 
-            <!-- Achievements -->
-            <div v-if="project.achievements && project.achievements.length > 0">
-              <h2 class="text-xs uppercase tracking-widest text-amber-500 mb-4">Key Achievements</h2>
+            <!-- Gallery -->
+            <div v-if="project.gallery_images && project.gallery_images.length > 0">
+              <h2 class="text-xs uppercase tracking-widest text-amber-500 mb-3">Gallery</h2>
               <div class="h-px w-12 bg-amber-500/30 mb-6"></div>
-              <ul class="space-y-3">
-                <li
-                  v-for="item in project.achievements"
-                  :key="item"
-                  class="flex items-start gap-3 text-gray-400"
+
+              <!-- Main Image Preview -->
+              <div class="border border-gray-800 overflow-hidden mb-4">
+                <img
+                  :src="`/storage/${activeImage}`"
+                  alt="Project screenshot"
+                  class="w-full object-cover"
+                />
+              </div>
+
+              <!-- Thumbnails -->
+              <div class="grid grid-cols-4 gap-2">
+                <button
+                  v-if="project.featured_image"
+                  @click="activeImage = project.featured_image"
+                  :class="['overflow-hidden border transition-all', activeImage === project.featured_image ? 'border-amber-500' : 'border-gray-800 hover:border-gray-600']"
                 >
-                  <Icon icon="mdi:check-circle-outline" class="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
-                  <span>{{ item }}</span>
-                </li>
-              </ul>
+                  <img :src="`/storage/${project.featured_image}`" class="w-full aspect-video object-cover" />
+                </button>
+                <button
+                  v-for="img in project.gallery_images"
+                  :key="img"
+                  @click="activeImage = img"
+                  :class="['overflow-hidden border transition-all', activeImage === img ? 'border-amber-500' : 'border-gray-800 hover:border-gray-600']"
+                >
+                  <img :src="`/storage/${img}`" class="w-full aspect-video object-cover" />
+                </button>
+              </div>
             </div>
 
           </div>
 
-          <!-- Right: Info -->
-          <div class="space-y-8">
+          <!-- Right: Info Sidebar -->
+          <div class="space-y-6">
 
             <!-- Project Info -->
             <div class="border border-gray-900 p-6">
               <h3 class="text-xs uppercase tracking-widest text-amber-500 mb-6">Project Info</h3>
-
               <div class="space-y-4">
                 <div>
                   <p class="text-xs text-gray-600 uppercase tracking-wider mb-1">Category</p>
                   <p class="text-gray-300">{{ getCategoryLabel(project.category) }}</p>
                 </div>
-
+                <div v-if="project.client_name">
+                  <p class="text-xs text-gray-600 uppercase tracking-wider mb-1">Client</p>
+                  <p class="text-gray-300">{{ project.client_name }}</p>
+                </div>
                 <div v-if="project.completed_at">
                   <p class="text-xs text-gray-600 uppercase tracking-wider mb-1">Completed</p>
                   <p class="text-gray-300">{{ new Date(project.completed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) }}</p>
                 </div>
-
                 <div>
-                  <p class="text-xs text-gray-600 uppercase tracking-wider mb-1">Technologies</p>
-                  <div class="flex flex-wrap gap-2 mt-2">
+                  <p class="text-xs text-gray-600 uppercase tracking-wider mb-2">Tech Stack</p>
+                  <div class="flex flex-wrap gap-2">
                     <span
                       v-for="tech in project.technologies"
                       :key="tech"
@@ -181,8 +224,7 @@ const getCategoryLabel = (cat: string) => {
                 View Live Demo
               </a>
 
-
-             <a   v-if="project.github_url"
+              <a  v-if="project.github_url"
                 :href="project.github_url"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -191,6 +233,27 @@ const getCategoryLabel = (cat: string) => {
                 <Icon icon="mdi:github" class="w-5 h-5" />
                 View Source Code
               </a>
+            </div>
+
+            <!-- Share -->
+            <div class="border border-gray-900 p-4">
+              <p class="text-xs text-gray-600 uppercase tracking-wider mb-3">Share</p>
+              <div class="flex gap-3">
+
+                <a  :href="`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent('https://hasibul.dev/projects/' + project.slug)}`"
+                  target="_blank"
+                  class="flex items-center gap-2 text-sm text-gray-600 hover:text-amber-500 transition-colors"
+                >
+                  <Icon icon="mdi:linkedin" class="w-5 h-5" />
+                </a>
+
+               <a   :href="`https://twitter.com/intent/tweet?url=${encodeURIComponent('https://hasibul.dev/projects/' + project.slug)}&text=${encodeURIComponent(project.title)}`"
+                  target="_blank"
+                  class="flex items-center gap-2 text-sm text-gray-600 hover:text-amber-500 transition-colors"
+                >
+                  <Icon icon="mdi:twitter" class="w-5 h-5" />
+                </a>
+              </div>
             </div>
 
           </div>
@@ -219,6 +282,7 @@ const getCategoryLabel = (cat: string) => {
                 </div>
               </div>
               <div class="p-4">
+                <p class="text-xs text-amber-500/70 uppercase tracking-wider mb-1">{{ getCategoryLabel(rel.category) }}</p>
                 <h3 class="text-sm font-light text-gray-300 group-hover:text-amber-500 transition-colors">
                   {{ rel.title }}
                 </h3>
