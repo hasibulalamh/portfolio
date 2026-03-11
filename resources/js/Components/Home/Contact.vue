@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
 import { useForm, usePage } from '@inertiajs/vue3'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 interface ContactSettings {
   id: number
@@ -17,17 +17,29 @@ interface ContactSettings {
 }
 
 interface PageProps {
-  auth: {
-    user: any
-  }
-  contactSetting?: ContactSettings[]
+  auth: { user: any }
+  contactSettings?: ContactSettings
   [key: string]: any
 }
 
 const page = usePage<PageProps>()
 const contact = computed(() => page.props.contactSettings)
 
-// Form handling
+// Calendly
+const showCalendly = ref(false)
+const CALENDLY_URL = 'https://calendly.com/hasibulalam108/30min'
+
+function openCalendly() {
+  showCalendly.value = true
+  document.body.style.overflow = 'hidden'
+}
+
+function closeCalendly() {
+  showCalendly.value = false
+  document.body.style.overflow = ''
+}
+
+// Form
 const form = useForm({
   name: '',
   email: '',
@@ -38,13 +50,10 @@ const form = useForm({
 const submitForm = () => {
   form.post('/contact', {
     preserveScroll: true,
-    onSuccess: () => {
-      form.reset()
-    },
+    onSuccess: () => form.reset(),
   })
 }
 
-// Availability badge color
 const getAvailabilityColor = (status: string) => {
   const colors: Record<string, string> = {
     'available': 'text-green-500 border-green-500/30 bg-green-500/10',
@@ -54,7 +63,6 @@ const getAvailabilityColor = (status: string) => {
   return colors[status] || colors.available
 }
 
-// Availability icon
 const getAvailabilityIcon = (status: string) => {
   const icons: Record<string, string> = {
     'available': 'mdi:check-circle',
@@ -83,16 +91,14 @@ const getAvailabilityIcon = (status: string) => {
         <div class="h-px w-24 bg-gradient-to-r from-amber-500 to-transparent mx-auto"></div>
       </div>
 
-      <!-- Description -->
       <p v-if="contact.description" class="text-center text-gray-500 max-w-3xl mx-auto mb-12">
         {{ contact.description }}
       </p>
 
-      <!-- Two Column Layout -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-12">
 
         <!-- Left: Contact Info -->
-        <div class="lg:col-span-1 space-y-8">
+        <div class="lg:col-span-1 space-y-6">
 
           <!-- Availability Status -->
           <div :class="['p-6 border', getAvailabilityColor(contact.availability_status)]">
@@ -107,35 +113,38 @@ const getAvailabilityIcon = (status: string) => {
             </p>
           </div>
 
+          <!-- Book a Meeting Button -->
+          <button
+            @click="openCalendly"
+            class="w-full flex items-center justify-center gap-3 px-6 py-4 border border-amber-500/30 bg-amber-500/5 text-amber-500 hover:bg-amber-500/10 transition-all duration-300 group"
+          >
+            <Icon icon="mdi:calendar-clock" class="w-5 h-5" />
+            <span class="uppercase tracking-wider text-sm font-medium">Book a Meeting</span>
+            <Icon icon="mdi:arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </button>
+
           <!-- Contact Details -->
-          <div class="space-y-6">
-            <!-- Email -->
+          <div class="space-y-4">
             <a :href="`mailto:${contact.email}`" class="group block">
               <div class="flex items-start gap-4 p-4 border border-gray-900 hover:border-amber-500/30 transition-all">
                 <Icon icon="mdi:email-outline" class="w-6 h-6 text-amber-500 flex-shrink-0 mt-1" />
                 <div>
                   <p class="text-xs text-gray-600 uppercase tracking-wider mb-1">Email</p>
-                  <p class="text-gray-300 group-hover:text-amber-500 transition-colors break-all">
-                    {{ contact.email }}
-                  </p>
+                  <p class="text-gray-300 group-hover:text-amber-500 transition-colors break-all">{{ contact.email }}</p>
                 </div>
               </div>
             </a>
 
-            <!-- Phone -->
             <a v-if="contact.phone" :href="`tel:${contact.phone}`" class="group block">
               <div class="flex items-start gap-4 p-4 border border-gray-900 hover:border-amber-500/30 transition-all">
                 <Icon icon="mdi:phone-outline" class="w-6 h-6 text-amber-500 flex-shrink-0 mt-1" />
                 <div>
                   <p class="text-xs text-gray-600 uppercase tracking-wider mb-1">Phone</p>
-                  <p class="text-gray-300 group-hover:text-amber-500 transition-colors">
-                    {{ contact.phone }}
-                  </p>
+                  <p class="text-gray-300 group-hover:text-amber-500 transition-colors">{{ contact.phone }}</p>
                 </div>
               </div>
             </a>
 
-            <!-- Address -->
             <div v-if="contact.address" class="flex items-start gap-4 p-4 border border-gray-900">
               <Icon icon="mdi:map-marker-outline" class="w-6 h-6 text-amber-500 flex-shrink-0 mt-1" />
               <div>
@@ -149,10 +158,7 @@ const getAvailabilityIcon = (status: string) => {
         <!-- Right: Contact Form -->
         <div v-if="contact.show_form" class="lg:col-span-2">
           <form @submit.prevent="submitForm" class="space-y-6">
-
-            <!-- Name & Email -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <!-- Name -->
               <div>
                 <label class="block text-sm text-gray-400 mb-2 uppercase tracking-wider">
                   Your Name <span class="text-amber-500">*</span>
@@ -166,8 +172,6 @@ const getAvailabilityIcon = (status: string) => {
                 />
                 <p v-if="form.errors.name" class="text-red-500 text-xs mt-1">{{ form.errors.name }}</p>
               </div>
-
-              <!-- Email -->
               <div>
                 <label class="block text-sm text-gray-400 mb-2 uppercase tracking-wider">
                   Your Email <span class="text-amber-500">*</span>
@@ -183,11 +187,8 @@ const getAvailabilityIcon = (status: string) => {
               </div>
             </div>
 
-            <!-- Subject -->
             <div>
-              <label class="block text-sm text-gray-400 mb-2 uppercase tracking-wider">
-                Subject
-              </label>
+              <label class="block text-sm text-gray-400 mb-2 uppercase tracking-wider">Subject</label>
               <input
                 v-model="form.subject"
                 type="text"
@@ -197,7 +198,6 @@ const getAvailabilityIcon = (status: string) => {
               <p v-if="form.errors.subject" class="text-red-500 text-xs mt-1">{{ form.errors.subject }}</p>
             </div>
 
-            <!-- Message -->
             <div>
               <label class="block text-sm text-gray-400 mb-2 uppercase tracking-wider">
                 Message <span class="text-amber-500">*</span>
@@ -212,7 +212,6 @@ const getAvailabilityIcon = (status: string) => {
               <p v-if="form.errors.message" class="text-red-500 text-xs mt-1">{{ form.errors.message }}</p>
             </div>
 
-            <!-- Submit Button -->
             <div class="flex items-center gap-4">
               <button
                 type="submit"
@@ -221,21 +220,58 @@ const getAvailabilityIcon = (status: string) => {
               >
                 <span v-if="!form.processing">Send Message</span>
                 <span v-else>Sending...</span>
-                <Icon
-                  icon="mdi:arrow-right"
-                  class="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform"
-                  v-if="!form.processing"
-                />
+                <Icon icon="mdi:arrow-right" class="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" v-if="!form.processing" />
               </button>
-
-              <p v-if="form.recentlySuccessful" class="text-green-500 text-sm">
-                ✓ Message sent successfully!
-              </p>
+              <p v-if="form.recentlySuccessful" class="text-green-500 text-sm">✓ Message sent successfully!</p>
             </div>
           </form>
         </div>
       </div>
-
     </div>
+
+    <!-- Calendly Modal -->
+    <Transition name="fade">
+      <div
+        v-if="showCalendly"
+        class="fixed inset-0 z-[9999] flex items-center justify-center"
+      >
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/90" @click="closeCalendly"></div>
+
+        <!-- Modal -->
+        <div class="relative w-full max-w-3xl mx-4 bg-zinc-950 border border-gray-800 z-10">
+
+          <!-- Header -->
+          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+            <div class="flex items-center gap-3">
+              <Icon icon="mdi:calendar-clock" class="w-5 h-5 text-amber-500" />
+              <span class="text-white text-sm uppercase tracking-wider">Book a Meeting</span>
+            </div>
+            <button @click="closeCalendly" class="text-gray-600 hover:text-white transition-colors">
+              <Icon icon="mdi:close" class="w-5 h-5" />
+            </button>
+          </div>
+
+          <!-- Calendly Iframe -->
+          <div class="h-[600px]">
+            <iframe
+              :src="`${CALENDLY_URL}?embed_domain=localhost&embed_type=Inline&hide_gdpr_banner=1`"
+              width="100%"
+              height="100%"
+              frameborder="0"
+            ></iframe>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </section>
 </template>
+
+<style scoped>
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+</style>
