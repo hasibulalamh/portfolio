@@ -48,29 +48,17 @@ Route::get('/projects/{slug}', function ($slug) {
     ]);
 })->name('project.show');
 
-// AI Chat
+// routes/web.php - Line 50-95
+
 Route::post('/ai-chat', function (\Illuminate\Http\Request $request) {
     $request->validate(['message' => 'required|string|max:500']);
 
-    // Rate limiting - max 20 requests per minute per IP
-    $key = 'ai-chat:' . $request->ip();
-    if (RateLimiter::tooManyAttempts($key, 20)) {
-        return response()->json([
-            'reply' => 'Too many requests. Please try again in a few minutes.'
-        ], 429);
-    }
-    RateLimiter::hit($key, 60);
-
-    // Validate API key exists
     $apiKey = env('GEMINI_API_KEY');
     if (!$apiKey) {
-        Log::error('GEMINI_API_KEY not configured');
-        return response()->json([
-            'reply' => 'AI service is not available. Please contact admin.'
-        ], 503);
+        return response()->json(['reply' => 'API key not configured'], 500);
     }
 
-    $message = htmlspecialchars($request->input('message'), ENT_QUOTES, 'UTF-8');
+    $message = $request->input('message');
 
     $systemPrompt = "You are an AI assistant for Hasibul Alam's portfolio website. Answer questions about Hasibul professionally and concisely.
 
@@ -91,52 +79,44 @@ Rules:
 - Always respond in the same language the user writes in (Bengali or English)";
 
     try {
-        $response = \Illuminate\Support\Facades\Http::timeout(10)
-            ->retry(3, 100)
-                    ->withHeaders([
-                'Content-Type' => 'application/json',
-                'x-goog-api-key' => $apiKey,
-                ])
-            ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", [
-                'system_instruction' => [
-                    'parts' => [['text' => $systemPrompt]]
-                ],
-                'contents' => [
-                    ['role' => 'user', 'parts' => [['text' => $message]]]
-                ],
-                'generationConfig' => [
-                    'maxOutputTokens' => 200,
-                    'temperature' => 0.7,
-                ]
-            ]);
+        $response = \Illuminate\Support\Facades\Http::withHeaders([
+            'Content-Type' => 'application/json',
+            'x-goog-api-key' => $apiKey,  // ✅ Header এ API Key
+        ])
+        ->timeout(10)
+        ->retry(2, 100)
+        ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", [
+            'system_instruction' => [
+                'parts' => [['text' => $systemPrompt]]
+            ],
+            'contents' => [
+                ['role' => 'user', 'parts' => [['text' => $message]]]
+            ],
+            'generationConfig' => [
+                'maxOutputTokens' => 200,
+                'temperature' => 0.7,
+            ]
+        ]);
 
-        if (!$response->successful()) {
-            Log::warning('Gemini API error', ['status' => $response->status()]);
-            return response()->json([
-                'reply' => 'The AI service is temporarily unavailable. Please try again.'
-            ], 503);
+        if ($response->successful()) {
+            $text = $response->json('candidates.0.content.parts.0.text')
+                ?? 'Sorry, I could not process your request.';
+            return response()->json(['reply' => $text]);
         }
 
-        $text = $response->json('candidates.0.content.parts.0.text');
-
-        if (!$text) {
-            return response()->json([
-                'reply' => 'Sorry, I could not generate a response. Please try again.'
-            ], 500);
-        }
-
-        return response()->json(['reply' => $text]);
-
-    } catch (\Illuminate\Http\Client\ConnectionException $e) {
-        Log::error('Gemini API connection failed', ['error' => $e->getMessage()]);
-        return response()->json([
-            'reply' => 'Connection error. Please try again.'
-        ], 503);
-
+        return response()->json(
+            ['reply' => 'Sorry, something went wrong. Please try again.'],
+            500
+        );
     } catch (\Exception $e) {
-        Log::error('AI chat error', ['error' => $e->getMessage()]);
-        return response()->json([
-            'reply' => 'An unexpected error occurred. Please try again.'
-        ], 500);
+        \Illuminate\Support\Facades\Log::error('Gemini API Error', [
+            'message' => $e->getMessage(),
+            'line' => $e->getLine()
+        ]);
+
+        return response()->json(
+            ['reply' => 'Service temporarily unavailable. Try again later.'],
+            500
+        );
     }
 })->name('ai.chat');
