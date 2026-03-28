@@ -8,23 +8,12 @@ import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
-createInertiaApp({
-    title: (title) => `${title} - ${appName}`,
-    resolve: (name) => resolvePageComponent(`./Pages/${name}.vue`, import.meta.glob('./Pages/**/*.vue')),
-    setup({ el, App, props, plugin }) {
-        return createApp({ render: () => h(App, props) })
-            .use(plugin)
-            .use(ZiggyVue)
-            .mount(el);
-    },
-    progress: {
-        color: '#4B5563',
-    },
-});
-
-// Add smooth scroll behavior
-document.addEventListener("DOMContentLoaded", () => {
+function setupSmoothScroll() {
     document.querySelectorAll("a[href^='#']").forEach(anchor => {
+        // Only add listener if not already added
+        if (anchor.dataset.smoothScrollAttached) return;
+        anchor.dataset.smoothScrollAttached = 'true';
+
         anchor.addEventListener("click", function (e) {
             const href = this.getAttribute("href");
             if (href === "#" || !href) return;
@@ -40,10 +29,11 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     });
-});
+}
 
-// Fade-in on scroll
-document.addEventListener('DOMContentLoaded', () => {
+function setupFadeInOnScroll() {
+    const sections = document.querySelectorAll('section');
+
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
@@ -52,8 +42,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }, { threshold: 0.1 });
 
-    document.querySelectorAll('section').forEach(section => {
+    sections.forEach(section => {
         section.classList.add('fade-in-section');
         observer.observe(section);
     });
+}
+
+createInertiaApp({
+    title: (title) => `${title} - ${appName}`,
+    resolve: (name) => resolvePageComponent(`./Pages/${name}.vue`, import.meta.glob('./Pages/**/*.vue')),
+    setup({ el, App, props, plugin }) {
+        const app = createApp({ render: () => h(App, props) })
+            .use(plugin)
+            .use(ZiggyVue)
+            .mount(el);
+        setupSmoothScroll();
+        setupFadeInOnScroll();
+
+        return app;
+    },
+    progress: {
+        color: '#4B5563',
+    },
 });

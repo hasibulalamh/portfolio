@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
 import { useForm, usePage } from '@inertiajs/vue3'
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 
 interface ContactSettings {
   id: number
@@ -28,15 +28,32 @@ const contact = computed(() => page.props.contactSettings)
 // Calendly
 const showCalendly = ref(false)
 const CALENDLY_URL = 'https://calendly.com/hasibulalam108/30min'
+const embedDomain = ref('')
+
+// ✅ Get current domain dynamically
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    embedDomain.value = window.location.hostname
+  }
+})
 
 function openCalendly() {
   showCalendly.value = true
+  const previousOverflow = document.body.style.overflow
   document.body.style.overflow = 'hidden'
+
+  // Store previous overflow for restoration
+  if (!document.body.dataset.previousOverflow) {
+    document.body.dataset.previousOverflow = previousOverflow
+  }
 }
 
 function closeCalendly() {
   showCalendly.value = false
-  document.body.style.overflow = ''
+  // ✅ Restore previous overflow value
+  const previousOverflow = document.body.dataset.previousOverflow || ''
+  document.body.style.overflow = previousOverflow
+  delete document.body.dataset.previousOverflow
 }
 
 // Form
@@ -255,7 +272,7 @@ const getAvailabilityIcon = (status: string) => {
           <!-- Calendly Iframe -->
           <div class="h-[600px]">
             <iframe
-              :src="`${CALENDLY_URL}?embed_domain=localhost&embed_type=Inline&hide_gdpr_banner=1`"
+              :src="`${CALENDLY_URL}?embed_domain=${embedDomain}&embed_type=Inline&hide_gdpr_banner=1`"
               width="100%"
               height="100%"
               frameborder="0"

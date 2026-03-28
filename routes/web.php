@@ -1,8 +1,7 @@
 <?php
 use App\Http\Controllers\ContactController;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\Log;
+
 use Inertia\Inertia;
 
 Route::get('/', function () {

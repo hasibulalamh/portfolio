@@ -14,14 +14,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+        ]);
+
+        $middleware->alias([
+            '2fa' => \PragmaRX\Google2FALaravel\Middleware::class,
+        ]);
+
+       
+        $middleware->validateCsrfTokens(except: [
 
         ]);
-            $middleware->alias([
-                    '2fa' => \PragmaRX\Google2FALaravel\Middleware::class,
-                ]);
-
-            $middleware->validateCsrfTokens(except: [
-                ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
