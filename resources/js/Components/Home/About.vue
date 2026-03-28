@@ -3,6 +3,8 @@ import { Icon } from '@iconify/vue'
 import { usePage } from '@inertiajs/vue3'
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 
+
+
 interface AboutSettings {
   title: string
   subtitle?: string
@@ -34,7 +36,9 @@ const animatedProjects = ref(0)
 const animatedClients = ref(0)
 const animatedTechs = ref(0)
 
-let animationFrameIds: number[] = []
+
+const animationFrameIds = ref<number[]>([])
+const timeoutIds = ref<ReturnType<typeof setTimeout>[]>([])
 
 const animateValue = (start: number, end: number, duration: number, setter: (val: number) => void) => {
   const startTime = Date.now()
@@ -48,8 +52,10 @@ const animateValue = (start: number, end: number, duration: number, setter: (val
 
     setter(current)
 
-    if (progress < 1) {
-      requestAnimationFrame(animate)
+    if (progress < 1)
+    {
+        const frameId = requestAnimationFrame(animate)
+        animationFrameIds.value.push(frameId)
     }
   }
   animate()
@@ -57,13 +63,21 @@ const animateValue = (start: number, end: number, duration: number, setter: (val
 
 onMounted(() => {
   if (about.value) {
-    setTimeout(() => {
-      animateValue(0, about.value.years_experience, 2000, (val) => animatedYears.value = val)
-      animateValue(0, about.value.projects_completed, 2500, (val) => animatedProjects.value = val)
-      animateValue(0, about.value.happy_clients, 2200, (val) => animatedClients.value = val)
-      animateValue(0, about.value.technologies_count, 1800, (val) => animatedTechs.value = val)
+    const timeoutId = setTimeout(() => {
+      animateValue(0, about.value!.years_experience, 2000, (val) => animatedYears.value = val)
+      animateValue(0, about.value!.projects_completed, 2500, (val) => animatedProjects.value = val)
+      animateValue(0, about.value!.happy_clients, 2200, (val) => animatedClients.value = val)
+      animateValue(0, about.value!.technologies_count, 1800, (val) => animatedTechs.value = val)
     }, 300)
+    timeoutIds.value.push(timeoutId)
   }
+})
+
+onBeforeUnmount(() => {
+  animationFrameIds.value.forEach(id => cancelAnimationFrame(id))
+  animationFrameIds.value = []
+  timeoutIds.value.forEach(id => clearTimeout(id))
+  timeoutIds.value = []
 })
 </script>
 
@@ -189,4 +203,3 @@ onMounted(() => {
     </div>
   </section>
 </template>
-<!-- This comment is a placeholder -->

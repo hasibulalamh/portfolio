@@ -23,21 +23,20 @@ createInertiaApp({
 });
 
 // Add smooth scroll behavior
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function (e) {
-            const href = this.getAttribute('href');
-            if (href === '#') return;
-
-            e.preventDefault();
-            const target = document.querySelector(href);
-            if (target) {
-                const offset = 80; // Navbar height
-                const targetPosition = target.offsetTop - offset;
-                window.scrollTo({
-                    top: targetPosition,
-                    behavior: 'smooth'
-                });
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("a[href^="#"]").forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            const href = this.getAttribute("href");
+            if (href === "#" || !href) return;
+            try {
+                const target = document.querySelector(href);
+                if (!target) return;
+                e.preventDefault();
+                const offset = 80;
+                const targetPosition = target.getBoundingClientRect().top + window.scrollY - offset;
+                window.scrollTo({ top: targetPosition, behavior: "smooth" });
+            } catch (error) {
+                console.error("Invalid href selector:", href);
             }
         });
     });
