@@ -7,6 +7,8 @@ use Carbon\Carbon;
 
 class Experience extends Model
 {
+    protected $appends = ['formatted_date_range'];
+
     protected $fillable = [
         'type',
         'title',

@@ -147,41 +147,42 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Stats -->
-      <div v-if="about.show_stats" class="grid grid-cols-2 md:grid-cols-4 gap-8">
+    <!-- Stats -->
+    <div v-if="about.show_stats" class="grid grid-cols-2 md:grid-cols-4 gap-8">
 
-        <div class="text-center group">
-          <div class="text-5xl font-light mb-2 text-gradient-gold">
-            {{ animatedYears }}+
-          </div>
-          <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
-          <p class="text-sm text-gray-500 uppercase tracking-wider">Years Experience</p>
+    <div class="text-center group">
+        <div class="text-5xl font-light mb-2 text-gradient-gold">
+        {{ animatedYears }}+
         </div>
+        <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
+        <p class="text-sm text-gray-500 uppercase tracking-wider">Years Experience</p>
+    </div>
 
-        <div class="text-center group">
-          <div class="text-5xl font-light mb-2 text-gradient-gold">
-            {{ animatedProjects }}+
-          </div>
-          <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
-          <p class="text-sm text-gray-500 uppercase tracking-wider">Projects Done</p>
+    <div class="text-center group">
+        <div class="text-5xl font-light mb-2 text-gradient-gold">
+        {{ animatedProjects }}+
         </div>
+        <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
+        <p class="text-sm text-gray-500 uppercase tracking-wider">Projects Done</p>
+    </div>
 
-        <div class="text-center group">
-          <div class="text-5xl font-light mb-2 text-gradient-gold">
-            {{ animatedClients }}+
-          </div>
-          <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
-          <p class="text-sm text-gray-500 uppercase tracking-wider">Happy Clients</p>
+    <div v-if="about.happy_clients > 0" class="text-center group">
+        <div class="text-5xl font-light mb-2 text-gradient-gold">
+        {{ animatedClients }}+
         </div>
+        <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
+        <p class="text-sm text-gray-500 uppercase tracking-wider">Happy Clients</p>
+    </div>
 
-        <div class="text-center group">
-          <div class="text-5xl font-light mb-2 text-gradient-gold">
-            {{ animatedTechs }}+
-          </div>
-          <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
-          <p class="text-sm text-gray-500 uppercase tracking-wider">Technologies</p>
+    <div class="text-center group">
+        <div class="text-5xl font-light mb-2 text-gradient-gold">
+        {{ animatedTechs }}+
         </div>
-      </div>
+        <div class="h-px w-12 bg-amber-500/50 mx-auto mb-2"></div>
+        <p class="text-sm text-gray-500 uppercase tracking-wider">Technologies</p>
+    </div>
+
+    </div>
 
     </div>
   </section>

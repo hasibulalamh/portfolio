@@ -45,16 +45,16 @@ const scrollToTop = () => {
             <h3 class="text-3xl font-light mb-4">
               <span class="text-gradient-elegant">Hasibul Alam</span>
             </h3>
-            <p class="text-gray-600 leading-relaxed mb-6 max-w-md font-light">
+            <p class="text-gray-400 leading-relaxed mb-6 max-w-md font-light">
               Full-Stack Web Developer specializing in Laravel, Vue.js, and modern web technologies.
             </p>
 
             <!-- Tech Stack -->
             <div class="flex flex-wrap gap-2">
-              <span class="px-3 py-1 border border-gray-900 text-xs text-gray-700 uppercase tracking-wider">Laravel</span>
-              <span class="px-3 py-1 border border-gray-900 text-xs text-gray-700 uppercase tracking-wider">Vue.js</span>
-              <span class="px-3 py-1 border border-gray-900 text-xs text-gray-700 uppercase tracking-wider">Inertia</span>
-              <span class="px-3 py-1 border border-gray-900 text-xs text-gray-700 uppercase tracking-wider">Tailwind</span>
+              <span class="px-3 py-1 border border-gray-900 text-xs text-gray-500 uppercase tracking-wider">Laravel</span>
+              <span class="px-3 py-1 border border-gray-800 text-xs text-gray-500 uppercase tracking-wider">Vue.js</span>
+              <span class="px-3 py-1 border border-gray-800 text-xs text-gray-500 uppercase tracking-wider">Inertia</span>
+              <span class="px-3 py-1 border border-gray-800 text-xs text-gray-500 uppercase tracking-wider">Tailwind</span>
             </div>
           </div>
 
@@ -99,7 +99,7 @@ const scrollToTop = () => {
             <!-- Contact Info -->
             <div v-if="contactInfo.length > 0" class="space-y-3">
               <div v-for="info in contactInfo" :key="info.name">
-                <p class="text-xs text-gray-700 uppercase tracking-wider mb-1">{{ info.name }}</p>
+                <p class="text-xs text-gray-500 uppercase tracking-wider mb-1">{{ info.name }}</p>
 
                 <a
                   v-if="info.name.toLowerCase().includes('email')"
@@ -131,28 +131,11 @@ const scrollToTop = () => {
 
       <!-- Bottom Bar -->
       <div class="border-t border-gray-900 py-8">
-        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="flex flex-col md:flex-row justify-center items-center gap-4">
 
-          <p class="text-sm text-gray-700">
+          <p class="text-sm text-gray-400">
             © {{ currentYear }} <span class="text-white">Hasibul Alam</span>. All rights reserved.
           </p>
-
-          <div class="flex items-center gap-2 text-sm text-gray-700">
-            <span>Crafted with</span>
-            <Icon icon="mdi:heart" class="w-4 h-4 text-amber-500" />
-            <span>using</span>
-            <span class="text-amber-500">Laravel</span>
-            <span>&</span>
-            <span class="text-amber-500">Vue.js</span>
-          </div>
-
-          <button
-            @click="scrollToTop"
-            class="group flex items-center gap-2 text-sm text-gray-700 hover:text-amber-500 transition-colors"
-          >
-            <span class="uppercase tracking-wider">Back to top</span>
-            <Icon icon="mdi:arrow-up" class="w-4 h-4 group-hover:-translate-y-1 transition-transform" />
-          </button>
         </div>
       </div>
     </div>

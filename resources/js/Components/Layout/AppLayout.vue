@@ -3,7 +3,6 @@ import Navbar from './Navbar.vue'
 import Footer from './Footer.vue'
 import BackToTop from '../UI/BackToTop.vue'
 import PageLoader from '../UI/PageLoader.vue'
-import WhatsAppButton from '../UI/WhatsAppButton.vue'
 import AiChat from '../UI/AiChat.vue'
 </script>
 
@@ -16,7 +15,6 @@ import AiChat from '../UI/AiChat.vue'
     </main>
     <Footer />
     <BackToTop />
-    <WhatsAppButton />
     <AiChat />
   </div>
 </template>

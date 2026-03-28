@@ -169,9 +169,9 @@ function setTech(tech: string) {
           <div
             v-for="project in filteredProjects"
             :key="project.id"
-            class="group relative"
+            class="group relative hover:-translate-y-2 transition-transform duration-300"
           >
-            <div class="relative overflow-hidden border border-gray-900 hover:border-amber-500/30 transition-all duration-500 bg-black">
+            <div class="relative overflow-hidden border border-gray-900 hover:border-amber-500/30 transition-all duration-500 bg-zinc-950 hover:shadow-xl hover:shadow-amber-500/10">
 
               <div v-if="project.is_featured" class="absolute top-4 right-4 z-10">
                 <div class="px-3 py-1 bg-amber-500/20 border border-amber-500/50 text-amber-500 text-xs uppercase tracking-wider">

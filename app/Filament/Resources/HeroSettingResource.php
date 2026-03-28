@@ -72,6 +72,11 @@ class HeroSettingResource extends Resource
                         ->label('Secondary Button Text')
                         ->default('View Resume'),
 
+                        Forms\Components\TextInput::make('secondary_cta_url')
+                        ->label('Secondary Button URL')
+                        ->default('#resume')
+                        ->placeholder('#resume or /resume'),
+
                     Forms\Components\FileUpload::make('resume_url')
                         ->label('Resume PDF')
                         ->acceptedFileTypes(['application/pdf'])

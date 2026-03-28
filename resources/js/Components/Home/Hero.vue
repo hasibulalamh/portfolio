@@ -41,6 +41,23 @@ const socialLinks = computed(() =>
   (page.props.social_links || []).filter(s => s.show_in_hero)
 )
 
+// Dynamic icon based on URL
+function getCtaIcon(url: string): string {
+  if (!url) return 'mdi:arrow-right'
+  const u = url.toLowerCase()
+  if (u.includes('contact') || u.includes('#contact')) return 'mdi:email-outline'
+  if (u.includes('project') || u.includes('#project')) return 'mdi:briefcase-outline'
+  if (u.includes('about') || u.includes('#about')) return 'mdi:account-outline'
+  if (u.includes('skill') || u.includes('#skill')) return 'mdi:code-tags'
+  if (u.includes('resume') || u.includes('cv') || u.includes('.pdf')) return 'mdi:file-document-outline'
+  if (u.includes('github')) return 'mdi:github'
+  if (u.includes('linkedin')) return 'mdi:linkedin'
+  if (u.includes('service') || u.includes('#service')) return 'mdi:cog-outline'
+  if (u.includes('blog') || u.includes('#blog')) return 'mdi:post-outline'
+  if (u.includes('hire') || u.includes('work')) return 'mdi:handshake-outline'
+  return 'mdi:arrow-right'
+}
+
 // Typing animation
 const typingTexts = [
   'Full Stack Web Developer',
@@ -88,9 +105,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section v-if="hero" class="relative min-h-screen flex items-center justify-center overflow-hidden bg-black">
+  <section id="hero" v-if="hero" class="relative min-h-screen flex items-center justify-center overflow-hidden bg-black">
 
-    <!-- Premium Background Pattern -->
+    <!-- Background -->
     <div class="absolute inset-0">
       <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(212,175,55,0.05),transparent_50%)]"></div>
       <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/20 to-transparent"></div>
@@ -131,7 +148,7 @@ onUnmounted(() => {
               <span class="text-gradient-elegant font-extralight">{{ hero.name }}</span>
             </h1>
 
-            <!-- Tagline with Typing Animation -->
+            <!-- Typing Animation -->
             <div class="mb-6">
               <div class="h-px w-16 bg-gradient-to-r from-amber-500 to-transparent mb-4"></div>
               <p class="text-xl md:text-2xl text-gray-400 font-light min-h-[2rem]">
@@ -144,28 +161,50 @@ onUnmounted(() => {
               {{ hero.description }}
             </p>
 
-            <!-- CTA Buttons -->
+            <!-- Stats -->
+            <div class="flex gap-8 mb-8">
+            <div class="text-left">
+                <div class="text-3xl font-light text-amber-500">3+</div>
+                <div class="text-xs text-gray-600 uppercase tracking-widest mt-1">Projects Built</div>
+            </div>
+            <div class="w-px bg-gray-800"></div>
+            <div class="text-left">
+                <div class="text-3xl font-light text-amber-500">1+</div>
+                <div class="text-xs text-gray-600 uppercase tracking-widest mt-1">Years Experience</div>
+            </div>
+            <div class="w-px bg-gray-800"></div>
+            <div class="text-left">
+                <div class="text-3xl font-light text-amber-500">15+</div>
+                <div class="text-xs text-gray-600 uppercase tracking-widest mt-1">Bugs Resolved</div>
+            </div>
+            </div>
+
+
+         <!-- CTA Buttons -->
             <div class="flex flex-col sm:flex-row gap-4 mb-8">
-              <a :href="hero.primary_cta_url"
-                class="group px-8 py-4 bg-gradient-to-r from-amber-600 to-yellow-600 text-black font-medium rounded-sm hover:from-amber-500 hover:to-yellow-500 transition-all duration-300 flex items-center justify-center"
-              >
+
+            <!-- Primary Button — primary_cta_url থেকে যাবে -->
+            <a :href="hero.primary_cta_url"
+                class="group px-8 py-4 bg-gradient-to-r from-amber-600 to-yellow-600 text-black font-medium rounded-sm hover:from-amber-500 hover:to-yellow-500 transition-all duration-300 flex items-center justify-center hover:scale-105 hover:shadow-lg hover:shadow-amber-500/20 btn-primary"
+            >
+                <Icon :icon="getCtaIcon(hero.primary_cta_url)" class="mr-2 w-5 h-5" />
                 {{ hero.primary_cta_text }}
                 <Icon icon="mdi:arrow-right" class="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </a>
+            </a>
 
-              <a :href="hero.resume_url ? `/storage/${hero.resume_url}` : hero.secondary_cta_url"
-                :target="hero.resume_url ? '_blank' : '_self'"
-                class="px-8 py-4 border border-gray-700 text-gray-300 hover:border-amber-500/50 hover:text-white transition-all duration-300 flex items-center justify-center rounded-sm"
-              >
-                <Icon icon="mdi:file-document-outline" class="mr-2 w-5 h-5" />
+            <!-- Secondary Button — secondary_cta_url থেকে যাবে (contact/etc) -->
+            <a :href="hero.secondary_cta_url"
+                class="group px-8 py-4 bg-gradient-to-r from-amber-600 to-yellow-600 text-black font-medium rounded-sm hover:from-amber-500 hover:to-yellow-500 transition-all duration-300 flex items-center justify-center hover:scale-105 hover:shadow-lg hover:shadow-amber-500/20 btn-primary"
+            >
+                <Icon :icon="getCtaIcon(hero.secondary_cta_url)" class="mr-2 w-5 h-5" />
                 {{ hero.secondary_cta_text }}
-              </a>
+                <Icon icon="mdi:arrow-right" class="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </a>
             </div>
 
             <!-- Social Links -->
             <div v-if="hero.show_social_links && socialLinks.length > 0" class="flex gap-4">
-
-              <a  v-for="social in socialLinks"
+              <a v-for="social in socialLinks"
                 :key="social.platform"
                 :href="social.url"
                 target="_blank"
@@ -183,7 +222,7 @@ onUnmounted(() => {
 
           <!-- Right: Photo -->
           <div v-if="hero.show_photo && hero.photo" class="order-1 lg:order-2 flex justify-center">
-            <div class="relative w-80 h-80 lg:w-96 lg:h-96">
+            <div class="relative w-56 h-56 sm:w-72 sm:h-72 lg:w-96 lg:h-96">
               <div class="absolute -inset-4 border border-amber-500/20"></div>
               <div class="absolute -inset-2 border border-gray-800"></div>
               <div class="relative w-full h-full overflow-hidden">

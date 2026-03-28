@@ -61,13 +61,13 @@ const filteredSkills = computed(() => {
 
       <div v-else>
         <!-- Filters -->
-        <div class="flex flex-wrap gap-3 mb-12">
+        <div class="flex flex-wrap gap-2 mb-8">
           <button
             v-for="category in categories"
             :key="category"
             @click="selectedCategory = category"
             :class="[
-              'px-6 py-2 text-sm uppercase tracking-wider transition-all duration-300',
+              'px-3 py-1.5 text-xs sm:px-6 sm:py-2 sm:text-sm uppercase tracking-wider transition-all duration-300',
               selectedCategory === category
                 ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30'
                 : 'border border-gray-800 text-gray-600 hover:border-gray-700 hover:text-gray-400'
@@ -82,10 +82,10 @@ const filteredSkills = computed(() => {
           <div
             v-for="skill in filteredSkills"
             :key="skill.id"
-            class="group relative aspect-square"
+            class="group relative aspect-square hover:-translate-y-2 transition-transform duration-300"
           >
             <!-- Card -->
-            <div class="relative h-full border border-gray-900 hover:border-amber-500/30 bg-zinc-950/50 transition-all duration-300 flex flex-col items-center justify-center p-4">
+            <div class="relative h-full border border-gray-900 hover:border-amber-500/30 bg-zinc-950/50 transition-all duration-300 flex flex-col items-center justify-center p-4 hover:shadow-lg hover:shadow-amber-500/10 hover:bg-zinc-900">
 
               <!-- Icon -->
               <Icon

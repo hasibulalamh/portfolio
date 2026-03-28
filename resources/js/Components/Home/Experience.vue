@@ -90,13 +90,13 @@ const getTypeIcon = (type: string) => {
 
       <div v-else>
         <!-- Type Filters -->
-        <div class="flex flex-wrap gap-3 mb-12">
+        <div class="flex flex-wrap gap-2 mb-8">
           <button
             v-for="type in types"
             :key="type"
             @click="selectedType = type"
             :class="[
-              'px-6 py-2 text-sm uppercase tracking-wider transition-all duration-300',
+              'px-3 py-1.5 text-xs sm:px-6 sm:py-2 sm:text-sm uppercase tracking-wider transition-all duration-300',
               selectedType === type
                 ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30'
                 : 'border border-gray-800 text-gray-600 hover:border-gray-700 hover:text-gray-400'
@@ -150,7 +150,7 @@ const getTypeIcon = (type: string) => {
                   <div class="flex items-start gap-6 mb-6">
                     <!-- Logo -->
                     <div v-if="exp.company_logo" class="flex-shrink-0">
-                      <div class="w-16 h-16 border border-gray-800 bg-gray-900 flex items-center justify-center p-2">
+                      <div class="w-16 h-16 border border-gray-800 bg-white flex items-center justify-center p-2">
                         <img
                           :src="`/storage/${exp.company_logo}`"
                           :alt="exp.company"
