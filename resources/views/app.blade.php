@@ -30,6 +30,7 @@
     <meta name="twitter:image" content="{{ config('app.url') }}/og-image.jpg">
 
     <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 

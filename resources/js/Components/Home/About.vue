@@ -147,7 +147,7 @@ onBeforeUnmount(() => {
           <img
             src="https://ghchart.rshah.org/d97706/HASIBULALAMH"
             alt="GitHub Activity Graph"
-            class="w-full opacity-80 hover:opacity-100 transition-opacity duration-300"
+            class="w-full opacity-80 hover:opacity-100 transition-opacity duration-300" @error="($event.target as HTMLImageElement).style.display='none'" loading="lazy"
           />
         </div>
         <div class="flex gap-6 mt-4">

@@ -71,8 +71,11 @@ const displayText = ref('')
 const currentIndex = ref(0)
 const isDeleting = ref(false)
 let typingTimer: ReturnType<typeof setTimeout> | null = null
+let isComponentActive = true
 
 function type() {
+
+  if (!isComponentActive) return
   const current = typingTexts[currentIndex.value]
 
   if (isDeleting.value) {
@@ -98,8 +101,8 @@ function type() {
 onMounted(() => {
   typingTimer = setTimeout(type, 800)
 })
-
 onUnmounted(() => {
+  isComponentActive = false
   if (typingTimer) clearTimeout(typingTimer)
 })
 </script>

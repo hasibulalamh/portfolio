@@ -93,8 +93,11 @@ Rules:
     try {
         $response = \Illuminate\Support\Facades\Http::timeout(10)
             ->retry(3, 100)
-            ->withHeaders(['Content-Type' => 'application/json'])
-            ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={$apiKey}", [
+                    ->withHeaders([
+                'Content-Type' => 'application/json',
+                'x-goog-api-key' => $apiKey,
+                ])
+            ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", [
                 'system_instruction' => [
                     'parts' => [['text' => $systemPrompt]]
                 ],

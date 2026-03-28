@@ -46,7 +46,7 @@ class ContactController extends Controller
             Mail::to($validated['email'])->send(new ClientAutoReply($validated));
             Mail::to(config('mail.from.address'))->send(new AdminNotification($validated));
         } catch (\Exception $e) {
-            // Mail fail হলেও form submit হবে
+            Log::error("Contact form email failed", ["error" => $e->getMessage()]);
         }
 
         return back()->with('success', 'Thank you! Your message has been sent successfully. Check your email! 📧');
