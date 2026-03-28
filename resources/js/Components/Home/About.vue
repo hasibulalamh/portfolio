@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
 import { usePage } from '@inertiajs/vue3'
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 
 interface AboutSettings {
   title: string
@@ -33,6 +33,8 @@ const animatedYears = ref(0)
 const animatedProjects = ref(0)
 const animatedClients = ref(0)
 const animatedTechs = ref(0)
+
+let animationFrameIds: number[] = []
 
 const animateValue = (start: number, end: number, duration: number, setter: (val: number) => void) => {
   const startTime = Date.now()
@@ -187,3 +189,4 @@ onMounted(() => {
     </div>
   </section>
 </template>
+<!-- This comment is a placeholder -->

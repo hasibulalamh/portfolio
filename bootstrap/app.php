@@ -21,7 +21,6 @@ return Application::configure(basePath: dirname(__DIR__))
                 ]);
 
             $middleware->validateCsrfTokens(except: [
-                    '/2fa',
                 ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

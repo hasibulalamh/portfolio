@@ -1,6 +1,8 @@
 <?php
 use App\Http\Controllers\ContactController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 Route::get('/', function () {
@@ -50,8 +52,25 @@ Route::get('/projects/{slug}', function ($slug) {
 Route::post('/ai-chat', function (\Illuminate\Http\Request $request) {
     $request->validate(['message' => 'required|string|max:500']);
 
+    // Rate limiting - max 20 requests per minute per IP
+    $key = 'ai-chat:' . $request->ip();
+    if (RateLimiter::tooManyAttempts($key, 20)) {
+        return response()->json([
+            'reply' => 'Too many requests. Please try again in a few minutes.'
+        ], 429);
+    }
+    RateLimiter::hit($key, 60);
+
+    // Validate API key exists
     $apiKey = env('GEMINI_API_KEY');
-    $message = $request->input('message');
+    if (!$apiKey) {
+        Log::error('GEMINI_API_KEY not configured');
+        return response()->json([
+            'reply' => 'AI service is not available. Please contact admin.'
+        ], 503);
+    }
+
+    $message = htmlspecialchars($request->input('message'), ENT_QUOTES, 'UTF-8');
 
     $systemPrompt = "You are an AI assistant for Hasibul Alam's portfolio website. Answer questions about Hasibul professionally and concisely.
 
@@ -71,25 +90,50 @@ Rules:
 - Be professional and friendly
 - Always respond in the same language the user writes in (Bengali or English)";
 
-    $response = \Illuminate\Support\Facades\Http::withHeaders([
-        'Content-Type' => 'application/json',
-    ])->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={$apiKey}", [
-        'system_instruction' => [
-            'parts' => [['text' => $systemPrompt]]
-        ],
-        'contents' => [
-            ['role' => 'user', 'parts' => [['text' => $message]]]
-        ],
-        'generationConfig' => [
-            'maxOutputTokens' => 200,
-            'temperature' => 0.7,
-        ]
-    ]);
+    try {
+        $response = \Illuminate\Support\Facades\Http::timeout(10)
+            ->retry(3, 100)
+            ->withHeaders(['Content-Type' => 'application/json'])
+            ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={$apiKey}", [
+                'system_instruction' => [
+                    'parts' => [['text' => $systemPrompt]]
+                ],
+                'contents' => [
+                    ['role' => 'user', 'parts' => [['text' => $message]]]
+                ],
+                'generationConfig' => [
+                    'maxOutputTokens' => 200,
+                    'temperature' => 0.7,
+                ]
+            ]);
 
-    if ($response->successful()) {
-        $text = $response->json('candidates.0.content.parts.0.text') ?? 'Sorry, I could not process your request.';
+        if (!$response->successful()) {
+            Log::warning('Gemini API error', ['status' => $response->status()]);
+            return response()->json([
+                'reply' => 'The AI service is temporarily unavailable. Please try again.'
+            ], 503);
+        }
+
+        $text = $response->json('candidates.0.content.parts.0.text');
+
+        if (!$text) {
+            return response()->json([
+                'reply' => 'Sorry, I could not generate a response. Please try again.'
+            ], 500);
+        }
+
         return response()->json(['reply' => $text]);
-    }
 
-    return response()->json(['reply' => 'Sorry, something went wrong. Please try again.'], 500);
+    } catch (\Illuminate\Http\Client\ConnectionException $e) {
+        Log::error('Gemini API connection failed', ['error' => $e->getMessage()]);
+        return response()->json([
+            'reply' => 'Connection error. Please try again.'
+        ], 503);
+
+    } catch (\Exception $e) {
+        Log::error('AI chat error', ['error' => $e->getMessage()]);
+        return response()->json([
+            'reply' => 'An unexpected error occurred. Please try again.'
+        ], 500);
+    }
 })->name('ai.chat');
