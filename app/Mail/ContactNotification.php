@@ -28,7 +28,15 @@ class ContactNotification extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'emails.contact-notification',
+            view: 'emails.admin-notification',
+            with: [
+                'contactData' => [
+                    'name'    => $this->contact->name,
+                    'email'   => $this->contact->email,
+                    'subject' => $this->contact->subject,
+                    'message' => $this->contact->message,
+                ]
+            ]
         );
     }
 }

@@ -23,7 +23,11 @@ class SendContactEmail implements ShouldQueue
     public function handle(): void
     {
         try {
-            // ✅ Only send to admin (auto-reply already exists)
+            // ✅ Client কে auto-reply
+            Mail::to($this->contact->email)
+                ->send(new \App\Mail\ClientAutoReply($this->contact->toArray()));
+
+            // ✅ Admin কে notification
             Mail::to(config('mail.from.address'))
                 ->send(new ContactNotification($this->contact));
 

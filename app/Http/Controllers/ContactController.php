@@ -6,7 +6,6 @@ use App\Jobs\SendContactEmail;
 use App\Mail\ClientProjectDetails;
 use App\Models\ContactMessage;
 use Illuminate\Http\Request;
-
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 
@@ -14,7 +13,6 @@ class ContactController extends Controller
 {
     public function store(Request $request)
     {
-        // Rate limiting
         $key = 'contact-message:' . $request->ip();
 
         if (RateLimiter::tooManyAttempts($key, 3)) {
@@ -28,8 +26,8 @@ class ContactController extends Controller
             'message' => 'required|string|max:2000',
         ]);
 
-        // DB তে save
-        ContactMessage::create([
+        // ✅ Create first
+        $contact = ContactMessage::create([
             'name'       => $validated['name'],
             'email'      => $validated['email'],
             'subject'    => $validated['subject'] ?? 'Contact Form Submission',
@@ -41,14 +39,12 @@ class ContactController extends Controller
 
         RateLimiter::hit($key, 3600);
 
-
-        SendContactEmail::dispatch($validated);
-
+        // ✅ Dispatch ContactMessage object
+        SendContactEmail::dispatch($contact);
 
         return back()->with('success', 'Thank you! Your message has been sent successfully. Check your email! 📧');
     }
 
-    // Admin থেকে project details email পাঠানো
     public function sendProjectDetails(Request $request, $id)
     {
         $contact = ContactMessage::findOrFail($id);

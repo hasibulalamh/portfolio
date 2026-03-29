@@ -44,7 +44,7 @@
       <p><strong>Message:</strong><br><br>{{ $contactData['message'] }}</p>
     </div>
     <div style="text-align:center; margin-top:25px;">
-      <a href="{{ config('app.url') }}/admin/contact-messages" class="btn">
+      <a href="{{ config('app.url') }}/halam-panel/contact-messages" class="btn">
         📥 View in Admin Panel
       </a>
     </div>
