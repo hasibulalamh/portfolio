@@ -5,6 +5,7 @@ import { createApp, h } from 'vue';
 import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
+import * as Sentry from '@sentry/vue';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -51,16 +52,22 @@ function setupFadeInOnScroll() {
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,
     resolve: (name) => resolvePageComponent(`./Pages/${name}.vue`, import.meta.glob('./Pages/**/*.vue')),
-    setup({ el, App, props, plugin }) {
-        const app = createApp({ render: () => h(App, props) })
-            .use(plugin)
-            .use(ZiggyVue)
-            .mount(el);
-        setupSmoothScroll();
-        setupFadeInOnScroll();
+   setup({ el, App, props, plugin }) {
+    const vueApp = createApp({ render: () => h(App, props) })
+        .use(plugin)
+        .use(ZiggyVue)
 
-        return app;
-    },
+    Sentry.init({
+        app: vueApp,
+        dsn: "https://c035fd05ef4f736c4f7cabca7d2e91dd@o4511131407482880.ingest.us.sentry.io/4511131496480768",
+        sendDefaultPii: true,
+    })
+
+    const app = vueApp.mount(el)
+    setupSmoothScroll()
+    setupFadeInOnScroll()
+    return app
+},
     progress: {
         color: '#4B5563',
     },
