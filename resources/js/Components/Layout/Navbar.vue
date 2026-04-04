@@ -7,7 +7,7 @@ const isOpen = ref(false)
 const menuItems = page.props.navbarItems || []
 const resumeUrl = page.props.heroSettings?.resume_url || null
 
-const isHomePage = computed(() => window.location.pathname === '/')
+const isHomePage = computed(() => page.url === '/')
 
 function handleNavClick(e, href) {
     if (!href.startsWith('#')) return

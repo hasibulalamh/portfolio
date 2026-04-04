@@ -33,7 +33,7 @@ class SendContactEmail implements ShouldQueue
 
             // ✅ Mark as sent
             $this->contact->update([
-                'email_sent' => true,
+                'project_details_sent' => false,
                 'email_sent_at' => now(),
             ]);
 
