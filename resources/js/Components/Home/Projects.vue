@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
-import { Link } from '@inertiajs/vue3'
-import { usePage } from '@inertiajs/vue3'
+import { usePage, Link } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
+
 
 interface Project {
   id: number
@@ -184,7 +184,11 @@ function setTech(tech: string) {
                   v-if="project.featured_image"
                   :src="`/storage/${project.featured_image}`"
                   :alt="project.title"
-                  class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-110 transition-all duration-700"
+                  class="w-full h-full object-cover transition-all duration-700"
+                  :class="[
+                    project.is_featured ? 'grayscale-[30%]' : 'grayscale',
+                    'group-hover:grayscale-0 group-hover:scale-110'
+                  ]"
                 />
                 <div v-else class="w-full h-full bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center">
                   <Icon icon="mdi:image-outline" class="w-16 h-16 text-gray-700" />
@@ -211,8 +215,8 @@ function setTech(tech: string) {
                     v-for="tech in project.technologies.slice(0, 4)"
                     :key="tech"
                     @click="setTech(tech)"
-                    class="px-2 py-1 text-xs border border-gray-800 text-gray-600 hover:border-amber-500/50 hover:text-amber-500 transition-all duration-200"
-                  >
+                    class="px-2 py-1 text-xs border transition-all duration-200 border-gray-800 text-gray-600 hover:border-amber-500/50 hover:text-amber-500"
+                     >
                     {{ tech }}
                   </button>
                   <span v-if="project.technologies.length > 4" class="px-2 py-1 text-xs text-gray-600">
@@ -227,7 +231,10 @@ function setTech(tech: string) {
                     rel="noopener noreferrer"
                     class="flex items-center gap-2 text-sm text-gray-500 hover:text-amber-500 transition-colors"
                   >
-                    <Icon icon="mdi:open-in-new" class="w-4 h-4" />
+                    <div class="relative flex h-2 w-2">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </div>
                     <span>Live Demo</span>
                   </a>
                   <a v-if="project.github_url"

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { usePage, Link } from '@inertiajs/vue3'
 import { Icon } from '@iconify/vue'
-import { usePage } from '@inertiajs/vue3'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
+
 
 interface HeroSettings {
   name: string
@@ -57,6 +58,23 @@ function getCtaIcon(url: string): string {
   if (u.includes('hire') || u.includes('work')) return 'mdi:handshake-outline'
   return 'mdi:arrow-right'
 }
+
+function isInternal(url: string): boolean {
+  if (!url) return false
+  return url.startsWith('/') || url.startsWith('#') || url.includes(window.location.host)
+}
+
+const projectsCount = computed(() => (page.props.projects as any[])?.length || 0)
+const experienceYears = computed(() => {
+  const experiences = (page.props.experiences as any[]) || []
+  if (experiences.length === 0) return 1 // Fallback
+
+  const startDates = experiences.map(e => new Date(e.start_date).getTime())
+  const minDate = new Date(Math.min(...startDates))
+  const diff = new Date().getTime() - minDate.getTime()
+  const years = diff / (1000 * 60 * 60 * 24 * 365.25)
+  return years < 1 ? 1 : Math.floor(years)
+})
 
 // Typing animation
 const typingTexts = [
@@ -160,49 +178,56 @@ onUnmounted(() => {
             </div>
 
             <!-- Description -->
-            <p v-if="hero.description" class="text-gray-500 leading-relaxed mb-8 text-lg font-light">
+            <p v-if="hero.description" class="text-gray-500 leading-relaxed mb-8 text-lg font-light transition-all duration-500"
+
+            >
               {{ hero.description }}
             </p>
 
             <!-- Stats -->
             <div class="flex gap-8 mb-8">
-            <div class="text-left">
-                <div class="text-3xl font-light text-amber-500">3+</div>
+              <div class="text-left">
+                <div class="text-3xl font-light text-amber-500">{{ projectsCount }}+</div>
                 <div class="text-xs text-gray-600 uppercase tracking-widest mt-1">Projects Built</div>
-            </div>
-            <div class="w-px bg-gray-800"></div>
-            <div class="text-left">
-                <div class="text-3xl font-light text-amber-500">1+</div>
+              </div>
+              <div class="w-px bg-gray-800"></div>
+              <div class="text-left">
+                <div class="text-3xl font-light text-amber-500">{{ experienceYears }}+</div>
                 <div class="text-xs text-gray-600 uppercase tracking-widest mt-1">Years Experience</div>
-            </div>
-            <div class="w-px bg-gray-800"></div>
-            <div class="text-left">
+              </div>
+              <div class="w-px bg-gray-800"></div>
+              <div class="text-left">
                 <div class="text-3xl font-light text-amber-500">15+</div>
                 <div class="text-xs text-gray-600 uppercase tracking-widest mt-1">Bugs Resolved</div>
-            </div>
+              </div>
             </div>
 
 
-         <!-- CTA Buttons -->
+            <!-- CTA Buttons -->
             <div class="flex flex-col sm:flex-row gap-4 mb-8">
-
-            <!-- Primary Button — primary_cta_url থেকে যাবে -->
-            <a :href="hero.primary_cta_url"
-                class="group px-8 py-4 bg-gradient-to-r from-amber-600 to-yellow-600 text-black font-medium rounded-sm hover:from-amber-500 hover:to-yellow-500 transition-all duration-300 flex items-center justify-center hover:scale-105 hover:shadow-lg hover:shadow-amber-500/20 btn-primary"
-            >
+              <!-- Primary Button -->
+              <component
+                :is="isInternal(hero.primary_cta_url) ? Link : 'a'"
+                :href="hero.primary_cta_url"
+                class="group px-8 py-4 bg-gradient-to-r from-amber-600 to-yellow-600 text-black font-medium rounded-sm hover:from-amber-500 hover:to-yellow-500 transition-all duration-300 flex items-center justify-center hover:scale-105 hover:shadow-lg hover:shadow-amber-500/20"
+              >
                 <Icon :icon="getCtaIcon(hero.primary_cta_url)" class="mr-2 w-5 h-5" />
                 {{ hero.primary_cta_text }}
                 <Icon icon="mdi:arrow-right" class="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </a>
+              </component>
 
-            <!-- Secondary Button — secondary_cta_url থেকে যাবে (contact/etc) -->
-            <a :href="hero.secondary_cta_url"
-                class="group px-8 py-4 bg-gradient-to-r from-amber-600 to-yellow-600 text-black font-medium rounded-sm hover:from-amber-500 hover:to-yellow-500 transition-all duration-300 flex items-center justify-center hover:scale-105 hover:shadow-lg hover:shadow-amber-500/20 btn-primary"
-            >
+              <!-- Secondary Button -->
+              <component
+                :is="isInternal(hero.secondary_cta_url) ? Link : 'a'"
+                :href="hero.secondary_cta_url"
+                class="group px-8 py-4 border border-amber-600/30 text-amber-500 font-medium rounded-sm hover:bg-amber-600/10 transition-all duration-300 flex items-center justify-center hover:scale-105 hover:border-amber-500"
+              >
                 <Icon :icon="getCtaIcon(hero.secondary_cta_url)" class="mr-2 w-5 h-5" />
                 {{ hero.secondary_cta_text }}
                 <Icon icon="mdi:arrow-right" class="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </a>
+              </component>
+
+             
             </div>
 
             <!-- Social Links -->

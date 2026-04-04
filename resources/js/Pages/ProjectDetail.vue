@@ -107,37 +107,48 @@ const getCategoryLabel = (cat: string) => {
             </div>
 
             <!-- Problem & Solution -->
-            <div v-if="project.problem_description || project.solution_description">
+            <div v-if="project.problem_description || project.solution_description" class="space-y-8">
               <h2 class="text-xs uppercase tracking-widest text-amber-500 mb-3">Case Study</h2>
               <div class="h-px w-12 bg-amber-500/30 mb-6"></div>
 
               <!-- Problem -->
-              <div v-if="project.problem_description" class="mb-8">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-8 h-8 bg-red-500/10 border border-red-500/30 flex items-center justify-center">
-                    <Icon icon="mdi:alert-circle-outline" class="w-4 h-4 text-red-400" />
-                  </div>
-                  <h3 class="text-white font-light uppercase tracking-wider text-sm">The Problem</h3>
+              <div v-if="project.problem_description" class="relative p-8 bg-zinc-950 border-l-4 border-red-500/50 group overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Icon icon="mdi:alert-circle-outline" class="w-24 h-24 text-red-500" />
                 </div>
-                <p class="text-gray-400 leading-relaxed mb-4">{{ project.problem_description }}</p>
-                <div v-if="project.problem_image" class="mt-4 border border-gray-800 overflow-hidden">
+                <div class="relative z-10">
+                  <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+                      <Icon icon="mdi:alert-circle-outline" class="w-5 h-5 text-red-400" />
+                    </div>
+                    <h3 class="text-white font-medium uppercase tracking-wider text-sm">The Challenge</h3>
+                  </div>
+                  <p class="text-gray-400 leading-relaxed text-lg italic">{{ project.problem_description }}</p>
+                </div>
+                
+                <div v-if="project.problem_image" class="mt-6 border border-gray-800 overflow-hidden rounded-sm">
                   <img
                     :src="`/storage/${project.problem_image}`"
                     alt="Problem illustration"
-                    class="w-full object-cover"
+                    class="w-full object-cover opacity-80 hover:opacity-100 transition-opacity"
                   />
                 </div>
               </div>
 
               <!-- Solution -->
-              <div v-if="project.solution_description">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-8 h-8 bg-green-500/10 border border-green-500/30 flex items-center justify-center">
-                    <Icon icon="mdi:check-circle-outline" class="w-4 h-4 text-green-400" />
-                  </div>
-                  <h3 class="text-white font-light uppercase tracking-wider text-sm">The Solution</h3>
+              <div v-if="project.solution_description" class="relative p-8 bg-zinc-950 border-l-4 border-green-500/50 group overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Icon icon="mdi:check-circle-outline" class="w-24 h-24 text-green-500" />
                 </div>
-                <p class="text-gray-400 leading-relaxed">{{ project.solution_description }}</p>
+                <div class="relative z-10">
+                  <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 bg-green-500/10 border border-green-500/30 flex items-center justify-center">
+                      <Icon icon="mdi:check-circle-outline" class="w-5 h-5 text-green-400" />
+                    </div>
+                    <h3 class="text-white font-medium uppercase tracking-wider text-sm">The Solution & Execution</h3>
+                  </div>
+                  <p class="text-gray-300 leading-relaxed text-lg">{{ project.solution_description }}</p>
+                </div>
               </div>
             </div>
 
