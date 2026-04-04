@@ -16,7 +16,8 @@ Route::post('/admin/contacts/{id}/send-project-details',
     ->middleware('auth');
 
 Route::get('/sitemap.xml', function () {
-    $content = view('sitemap');
+    $projects = \App\Models\Project::active()->get();
+    $content = view('sitemap', compact('projects'));
     return response($content, 200)->header('Content-Type', 'application/xml');
 });
 
@@ -48,11 +49,11 @@ Route::get('/projects/{slug}', function ($slug) {
 })->name('project.show');
 
 // routes/web.php - Line 50-95
-
+Route::middleware('throttle:10,1')->group(function () {
 Route::post('/ai-chat', function (\Illuminate\Http\Request $request) {
     $request->validate(['message' => 'required|string|max:500']);
 
-    $apiKey = env('GEMINI_API_KEY');
+    $apiKey = config('services.gemini.key');
     if (!$apiKey) {
         return response()->json(['reply' => 'API key not configured'], 500);
     }
@@ -119,3 +120,4 @@ Rules:
         );
     }
 })->name('ai.chat');
+});

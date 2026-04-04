@@ -69,7 +69,7 @@ const experienceYears = computed(() => {
   const experiences = (page.props.experiences as any[]) || []
   if (experiences.length === 0) return 1 // Fallback
 
-  const startDates = experiences.map(e => new Date(e.start_date).getTime())
+  const startDates = experiences.map(e => e.start_date ? new Date(e.start_date).getTime() : Date.now())
   const minDate = new Date(Math.min(...startDates))
   const diff = new Date().getTime() - minDate.getTime()
   const years = diff / (1000 * 60 * 60 * 24 * 365.25)
