@@ -66,4 +66,46 @@ class SectionVisibilityPolicyTest extends TestCase
             ],
         ];
     }
+
+    // ------------------------------------------------------------------
+    // isHidingLocked — convenience wrapper
+    // ------------------------------------------------------------------
+
+    public function test_is_hiding_locked_returns_true_when_the_index_hides_a_locked_section(): void
+    {
+        $sections = [
+            ['id' => 1, 'is_visible' => true],
+            ['id' => 2, 'is_visible' => false],
+        ];
+
+        $this->assertTrue(SectionVisibilityPolicy::isHidingLocked($sections, [2], 1));
+    }
+
+    public function test_is_hiding_locked_returns_false_when_the_index_is_not_locked(): void
+    {
+        $sections = [
+            ['id' => 1, 'is_visible' => false],
+            ['id' => 2, 'is_visible' => false],
+        ];
+
+        $this->assertFalse(SectionVisibilityPolicy::isHidingLocked($sections, [2], 0));
+    }
+
+    public function test_is_hiding_locked_returns_false_when_the_section_is_visible(): void
+    {
+        $sections = [
+            ['id' => 1, 'is_visible' => true],
+        ];
+
+        $this->assertFalse(SectionVisibilityPolicy::isHidingLocked($sections, [1], 0));
+    }
+
+    public function test_is_hiding_locked_returns_false_for_empty_locked_list(): void
+    {
+        $sections = [
+            ['id' => 1, 'is_visible' => false],
+        ];
+
+        $this->assertFalse(SectionVisibilityPolicy::isHidingLocked($sections, [], 0));
+    }
 }

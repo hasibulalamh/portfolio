@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\Cors;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Responses\ApiResponse;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -18,6 +20,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // CORS policy enforcement. Prepended so this first-party layer runs
+        // outermost and has the final word on ACAO/credentials; Laravel's
+        // built-in HandleCors middleware (framework default, runs inside this)
+        // still answers preflight OPTIONS requests. Allowlist lives in
+        // config/cors.php — the single source of truth for both layers.
+        $middleware->prepend(Cors::class);
+
+        // Global security headers: strip X-Powered-By and add nosniff / CORP /
+        // CSP. Runs on every response, including exceptions rendered by the
+        // handlers below and the /up health check.
+        $middleware->append(SecurityHeaders::class);
+
         // This is an API-only backend: there is no named `login` route to send
         // guests to. Laravel's default is redirectGuestsTo(fn () => route('login')),
         // which throws RouteNotFoundException while building the redirect — so an

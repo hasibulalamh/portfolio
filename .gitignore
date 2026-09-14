@@ -22,3 +22,8 @@ portfolio-backend/public/hot
 .DS_Store
 *.swp
 *.zip
+**/storage/certs/
+*.deb
+test-results/
+infection-tmp/
+infection-log.txt

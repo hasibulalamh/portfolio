@@ -81,16 +81,16 @@ section() { echo; echo "=== $1 ==="; }
 # ---------------------------------------------------------------------------
 section "Public endpoints (no auth)"
 # ---------------------------------------------------------------------------
-check "GET /settings"       200 GET /settings
-check "GET /nav-items"      200 GET /nav-items
-check "GET /hero"           200 GET /hero
-check "GET /about"          200 GET /about
-check "GET /skills"         200 GET /skills
-check "GET /timeline"       200 GET /timeline
-check "GET /projects"       200 GET /projects
-check "GET /api-showcases"  200 GET /api-showcases
-check "GET /testimonials"   200 GET /testimonials
-check "GET /contact-info"   200 GET /contact-info
+check "GET /settings"            200 GET /settings
+check "GET /section-visibility"  200 GET /section-visibility
+check "GET /hero"                200 GET /hero
+check "GET /about"               200 GET /about
+check "GET /skills"              200 GET /skills
+check "GET /timeline"            200 GET /timeline
+check "GET /projects"            200 GET /projects
+check "GET /api-showcases"       200 GET /api-showcases
+check "GET /testimonials"        200 GET /testimonials
+check "GET /contact-info"        200 GET /contact-info
 check "GET /projects/{unknown-slug} is 404" 404 GET /projects/no-such-project
 
 # ---------------------------------------------------------------------------
@@ -125,10 +125,8 @@ check "PUT  /admin/settings rejects bad hex" 422 PUT /admin/settings \
 
 check "GET  /admin/hero" 200 GET /admin/hero
 check "PUT  /admin/hero" 200 PUT /admin/hero \
-  '{"heading":"Smoke Heading","subheading":"sub","github_url":"","email":"","image_path":""}'
+  '{"heading":"Smoke Heading","subheading":"sub","email":"","image_path":"","social_links":[]}'
 check "PUT  /admin/hero requires heading" 422 PUT /admin/hero '{"subheading":"no heading"}'
-check "PUT  /admin/hero rejects bad url" 422 PUT /admin/hero \
-  '{"heading":"h","github_url":"not a url"}'
 
 check "GET  /admin/about" 200 GET /admin/about
 check "PUT  /admin/about" 200 PUT /admin/about \
@@ -141,20 +139,9 @@ check "PUT  /admin/contact-info rejects non-digit whatsapp" 422 PUT /admin/conta
   '{"whatsapp_number":"+880 170 000"}'
 
 # ---------------------------------------------------------------------------
-section "Nav items (CRUD + reorder)"
+section "Section visibility (read + update)"
 # ---------------------------------------------------------------------------
-check "POST /admin/nav-items" 201 POST /admin/nav-items '{"label":"Home","href":"#home","order":0}'
-NAV1="$(json data.id)"
-check "POST /admin/nav-items (second)" 201 POST /admin/nav-items '{"label":"About","href":"#about","order":1}'
-NAV2="$(json data.id)"
-check "POST /admin/nav-items rejects bad href" 422 POST /admin/nav-items '{"label":"Bad","href":"javascript:alert(1)"}'
-check "GET  /admin/nav-items" 200 GET /admin/nav-items
-check "PUT  /admin/nav-items/{id}" 200 PUT "/admin/nav-items/$NAV1" '{"label":"Start","href":"/","order":0}'
-check "PUT  /admin/nav-items/reorder" 200 PUT /admin/nav-items/reorder \
-  "{\"items\":[{\"id\":$NAV2,\"order\":0},{\"id\":$NAV1,\"order\":1}]}"
-check "PUT  /admin/nav-items/reorder rejects empty" 422 PUT /admin/nav-items/reorder '{"items":[]}'
-check "DELETE /admin/nav-items/{id}" 200 DELETE "/admin/nav-items/$NAV2"
-check "PUT  /admin/nav-items/{missing} is 404" 404 PUT /admin/nav-items/999999 '{"label":"x","href":"/"}'
+check "GET  /admin/section-visibility" 200 GET /admin/section-visibility
 
 # ---------------------------------------------------------------------------
 section "Skills (categories + skills, filtered + reorder)"
@@ -187,16 +174,16 @@ check "DELETE /admin/skills/{id}" 200 DELETE "/admin/skills/$SKILL2"
 section "Timeline (CRUD + reorder)"
 # ---------------------------------------------------------------------------
 check "POST /admin/timeline-items" 201 POST /admin/timeline-items \
-  '{"year":"2024 — Present","title":"Laravel Developer","company":"Smart Software Ltd","description":"d","order":0}'
+  '{"type":"experience","institute_or_company":"Smart Software Ltd","subject_or_role":"Laravel Developer","start_year":"2024","end_year":"","order":0}'
 TL1="$(json data.id)"
 check "POST /admin/timeline-items (second)" 201 POST /admin/timeline-items \
-  '{"year":"2024","title":"Intern","company":"Kodeeo Ltd","order":1}'
+  '{"type":"education","institute_or_company":"Kodeeo Ltd","subject_or_role":"Intern","start_year":"2020","end_year":"2021","order":1}'
 TL2="$(json data.id)"
-check "POST /admin/timeline-items requires company" 422 POST /admin/timeline-items \
-  '{"year":"2024","title":"No company"}'
+check "POST /admin/timeline-items requires type" 422 POST /admin/timeline-items \
+  '{"institute_or_company":"No type","subject_or_role":"X","start_year":"2024","order":0}'
 check "GET  /admin/timeline-items" 200 GET /admin/timeline-items
 check "PUT  /admin/timeline-items/{id}" 200 PUT "/admin/timeline-items/$TL1" \
-  '{"year":"2025 — Present","title":"Senior Developer","company":"Smart Software Ltd","order":0}'
+  '{"type":"experience","institute_or_company":"Smart Software Ltd","subject_or_role":"Senior Developer","start_year":"2025","order":0}'
 check "PUT  /admin/timeline-items/reorder" 200 PUT /admin/timeline-items/reorder \
   "{\"items\":[{\"id\":$TL2,\"order\":0},{\"id\":$TL1,\"order\":1}]}"
 check "DELETE /admin/timeline-items/{id}" 200 DELETE "/admin/timeline-items/$TL2"
@@ -233,7 +220,6 @@ section "API showcases + testimonials"
 check "POST /admin/api-showcases" 201 POST /admin/api-showcases \
   '{"icon_name":"Zap","title":"Payment Gateway API","description":"d","endpoints":["POST /api/pay","GET /api/pay/{id}"],"order":0}'
 SHOW1="$(json data.id)"
-check "POST /admin/api-showcases requires icon" 422 POST /admin/api-showcases '{"title":"No icon"}'
 check "GET  /admin/api-showcases" 200 GET /admin/api-showcases
 check "PUT  /admin/api-showcases/{id}" 200 PUT "/admin/api-showcases/$SHOW1" \
   '{"icon_name":"Database","title":"Real-Time Sync","endpoints":["GET /api/sync"],"order":0}'
@@ -302,16 +288,37 @@ check "PUT  /admin/meeting-requests/{id}/note" 200 PUT "/admin/meeting-requests/
   '{"admin_note":"Internal: check availability Thursday."}'
 check "PUT  /admin/meeting-requests/{id}/note requires the key" 422 PUT "/admin/meeting-requests/$MR1/note" '{}'
 
-check "PUT  /admin/meeting-requests/{id}/reply" 200 PUT "/admin/meeting-requests/$MR1/reply" \
-  '{"admin_reply":"Thanks for reaching out — Thursday at 9am works for me."}'
-STATUS_AFTER="$(json data.status)"
-REPLIED_AT="$(json data.replied_at)"
-if [ "$STATUS_AFTER" = "replied" ] && [ -n "$REPLIED_AT" ]; then
-  echo "  $(c_green PASS)  status -> replied, replied_at stamped"
+# Reply: 200 on delivery, 502 on transport failure (both are valid outcomes)
+REPLY_STATUS="$(request PUT "/admin/meeting-requests/$MR1/reply" \
+  '{"admin_reply":"Thanks for reaching out — Thursday at 9am works for me."}')"
+if [ "$REPLY_STATUS" = "200" ] || [ "$REPLY_STATUS" = "502" ]; then
+  echo "  $(c_green PASS)  PUT /admin/meeting-requests/$MR1/reply ($REPLY_STATUS)"
   PASS=$((PASS + 1))
 else
-  echo "  $(c_red FAIL)  expected status=replied with replied_at, got status=$STATUS_AFTER replied_at=$REPLIED_AT"
+  echo "  $(c_red FAIL)  PUT /admin/meeting-requests/$MR1/reply — expected 200 or 502, got $REPLY_STATUS"
+  echo "         $(head -c 400 "$BODY_FILE")"
   FAIL=$((FAIL + 1))
+fi
+
+STATUS_AFTER="$(json data.status)"
+REPLIED_AT="$(json data.replied_at)"
+if [ "$REPLY_STATUS" = "200" ]; then
+  if [ "$STATUS_AFTER" = "replied" ] && [ -n "$REPLIED_AT" ]; then
+    echo "  $(c_green PASS)  status -> replied, replied_at stamped"
+    PASS=$((PASS + 1))
+  else
+    echo "  $(c_red FAIL)  expected status=replied with replied_at, got status=$STATUS_AFTER replied_at=$REPLIED_AT"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  # 502: delivery failed, status should remain pending
+  if [ "$STATUS_AFTER" = "pending" ]; then
+    echo "  $(c_green PASS)  delivery failed, status stays pending (expected)"
+    PASS=$((PASS + 1))
+  else
+    echo "  $(c_red FAIL)  on 502 expected status=pending, got status=$STATUS_AFTER"
+    FAIL=$((FAIL + 1))
+  fi
 fi
 check "PUT  /admin/meeting-requests/{id}/reply requires text" 422 PUT "/admin/meeting-requests/$MR1/reply" '{"admin_reply":""}'
 

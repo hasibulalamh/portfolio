@@ -1,0 +1,24 @@
+{
+    "$schema": "vendor/infection/infection/resources/schema.json",
+    "source": {
+        "directories": [
+            "app/Services",
+            "app/Http/Responses",
+            "app/Http/Requests",
+            "app/Mail",
+            "app/Support"
+        ]
+    },
+    "logs": {
+        "text": "infection-log.txt"
+    },
+    "tmpDir": "infection-tmp",
+    "phpUnit": {
+        "configDir": "."
+    },
+    "mutators": {
+        "@default": true
+    },
+    "timeout": 10,
+    "testFrameworkOptions": "--no-coverage"
+}

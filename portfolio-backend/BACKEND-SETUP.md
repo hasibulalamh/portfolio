@@ -107,10 +107,60 @@ Sign in at http://localhost:3001/login.
 
 ## CORS
 
-`config/cors.php` lists the allowed browser origins. `supports_credentials` is
-`true` because the admin's axios client sends credentials, and that rules out a
-wildcard origin — every origin must be listed explicitly. Local ports 3000/3001
-are included; replace the placeholder production domains before deploying.
+The API is consumed cross-origin by both Next.js apps, so `config/cors.php`
+lists the allowed browser origins. `supports_credentials` is `true` because the
+admin's axios client sends credentials, and that rules out a wildcard origin —
+every origin must be listed explicitly.
+
+The policy is applied in two layers:
+
+1. **Laravel's built-in `HandleCors` middleware** (framework default) answers
+   preflight `OPTIONS` requests with a 204 and emits the CORS headers.
+2. **`app/Http/Middleware/Cors.php`** (registered outermost in
+   `bootstrap/app.php`) enforces the same allowlist on every actual response:
+   an allowed origin gets its exact origin echoed with credentials, and any
+   origin not on the list receives no CORS headers at all.
+
+`config/cors.php` is the single source of truth — both layers read it, so they
+cannot disagree. The allowlist is built from the `FRONTEND_URL` and `ADMIN_URL`
+env vars (with localhost:3000/3001 defaults for development); there are no
+hardcoded production domains in the file.
+
+### Allowing a new frontend origin
+
+Set the env vars and restart, no code change needed:
+
+```dotenv
+FRONTEND_URL=https://portfolio.example.com
+ADMIN_URL=https://admin.example.com
+```
+
+If the deployment cannot use env vars, edit `config/cors.php` directly — but
+remember the app must be restarted after `php artisan config:cache`.
+
+## Security headers
+
+The app sets these on every response via `app/Http/Middleware/SecurityHeaders.php`
+(global middleware):
+
+| Header | Value |
+|---|---|
+| `X-Powered-By` | removed (response object + SAPI `header_remove`) |
+| `X-Content-Type-Options` | `nosniff` |
+| `Cross-Origin-Resource-Policy` | `same-origin` |
+| `Content-Security-Policy` | `default-src 'none'; frame-ancestors 'none'; form-action 'none'` |
+
+For production, mirror these at the web-server level so they also cover
+responses that never reach Laravel (static files, web-server 404s): see
+`deploy/nginx-portfolio-api.conf.example` and
+`deploy/apache-portfolio-api.conf.example`.
+
+CORS headers (`Access-Control-Allow-*`) deliberately stay in the app: the
+allowlist is dynamic and credentials-enabled, so a static header in the web
+server would bypass it. Also note that `Cross-Origin-Resource-Policy:
+same-origin` applies to `/api/*` responses; uploads are served from R2 (or the
+local storage symlink, which the web server serves without these headers), so
+frontends can still display them cross-origin.
 
 ## File uploads
 
@@ -292,8 +342,11 @@ against, so point it at a development database, not production.
 ## Deploying
 
 1. `APP_ENV=production`, `APP_DEBUG=false`, and set a real `APP_URL`
-2. Replace the placeholder domains in `config/cors.php` and set `FRONTEND_URL` / `ADMIN_URL`
-3. Change the seeded admin password
-4. Configure R2, and verify a Resend domain so mail reaches real recipients (see [Email](#email))
-5. `php artisan config:cache route:cache`
-6. Serve `public/` over HTTPS
+2. Set `FRONTEND_URL` / `ADMIN_URL` to the real frontend origins (this is what
+   the CORS allowlist is built from — see [CORS](#cors))
+3. Apply the security headers at the web-server level too — see
+   `deploy/nginx-portfolio-api.conf.example` / `deploy/apache-portfolio-api.conf.example`
+4. Change the seeded admin password
+5. Configure R2, and verify a Resend domain so mail reaches real recipients (see [Email](#email))
+6. `php artisan config:cache route:cache`
+7. Serve `public/` over HTTPS

@@ -351,12 +351,13 @@ class PublicSubmissionIntegrationTest extends TestCase
     #[\PHPUnit\Framework\Attributes\DataProvider('publicEndpoints')]
     public function test_the_admin_address_falls_back_to_the_cms_contact_info(
         string $endpoint,
+        string $table,
     ): void {
         // With ADMIN_NOTIFY_EMAIL unset the notifier reads contact_info.email,
         // which is admin-maintained CMS data. Exercising that needs a real row,
         // which is why it lives here rather than in the unit suite.
         config(['mail.admin_notify_address' => null]);
-        ContactInfo::query()->create(['email' => 'cms-inbox@portfolio.test']);
+        ContactInfo::singleton()->update(['email' => 'cms-inbox@portfolio.test']);
 
         Mail::fake();
 

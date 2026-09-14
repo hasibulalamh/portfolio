@@ -113,6 +113,7 @@ class AdminReplyIntegrationTest extends TestCase
         string $template,
         string $mailable,
         string $table,
+        string $recipient,
     ): void {
         Mail::fake();
         $this->actAsAdmin();
@@ -134,6 +135,7 @@ class AdminReplyIntegrationTest extends TestCase
         string $template,
         string $mailable,
         string $table,
+        string $recipient,
     ): void {
         // The single most important shared property. `apiCall()` derives its
         // success boolean from the status code and nothing else, so a 200 here is
@@ -157,6 +159,7 @@ class AdminReplyIntegrationTest extends TestCase
         string $template,
         string $mailable,
         string $table,
+        string $recipient,
     ): void {
         // apiCall() reads data.data on success and data.message / data.errors on
         // failure. A fourth key or a missing one breaks the panel with no PHP error.
@@ -198,6 +201,7 @@ class AdminReplyIntegrationTest extends TestCase
         string $template,
         string $mailable,
         string $table,
+        string $recipient,
     ): void {
         Mail::fake();
         $this->actAsAdmin();
@@ -220,6 +224,7 @@ class AdminReplyIntegrationTest extends TestCase
         string $template,
         string $mailable,
         string $table,
+        string $recipient,
     ): void {
         // The admin typed it; losing it to a transport error would be the worst
         // outcome of the three. This is asserted against the database, not just
@@ -243,6 +248,7 @@ class AdminReplyIntegrationTest extends TestCase
         string $template,
         string $mailable,
         string $table,
+        string $recipient,
     ): void {
         // Sends are synchronous by deliberate design: QUEUE_CONNECTION is
         // `database` but no worker is expected to be running. A Mailable that
@@ -267,6 +273,7 @@ class AdminReplyIntegrationTest extends TestCase
         string $template,
         string $mailable,
         string $table,
+        string $recipient,
     ): void {
         Mail::fake();
 
@@ -284,6 +291,7 @@ class AdminReplyIntegrationTest extends TestCase
         string $template,
         string $mailable,
         string $table,
+        string $recipient,
     ): void {
         Mail::fake();
         $this->actAsAdmin();
@@ -302,6 +310,7 @@ class AdminReplyIntegrationTest extends TestCase
         string $template,
         string $mailable,
         string $table,
+        string $recipient,
     ): void {
         Mail::fake();
         $this->actAsAdmin();

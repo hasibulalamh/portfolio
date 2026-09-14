@@ -1,0 +1,62 @@
+# ZAP automation plan for the API itself.
+#
+# The plain zap.yaml runs a spider against http://localhost:8000, which finds
+# no HTML links into /api/* — so this plan uses the requestor job to fetch the
+# public endpoints directly and then runs the passive scan over them.
+#
+# Run against the local server with:
+#
+#   docker run --rm --network=host \
+#     -v "$PWD":/zap/wrk/:rw -v /tmp/zap-out:/home/zap \
+#     zaproxy/zap-stable zap.sh -cmd -autorun /zap/wrk/zap-api.yaml
+#
+# Report is written to zap-api-report.html, machine summary to /home/zap
+# (mount a writable dir there to keep it).
+env:
+  contexts:
+  - name: api
+    urls:
+    - http://localhost:8000/api
+  parameters:
+    failOnError: false
+    progressToStdout: true
+jobs:
+- type: requestor
+  parameters:
+    user: ''
+  requests:
+  - url: http://localhost:8000/api/hero
+    method: GET
+  - url: http://localhost:8000/api/settings
+    method: GET
+  - url: http://localhost:8000/api/section-visibility
+    method: GET
+  - url: http://localhost:8000/api/about
+    method: GET
+  - url: http://localhost:8000/api/skills
+    method: GET
+  - url: http://localhost:8000/api/timeline
+    method: GET
+  - url: http://localhost:8000/api/projects
+    method: GET
+  - url: http://localhost:8000/api/api-showcases
+    method: GET
+  - url: http://localhost:8000/api/testimonials
+    method: GET
+  - url: http://localhost:8000/api/contact-info
+    method: GET
+  - url: http://localhost:8000/api/does-not-exist
+    method: GET
+- type: passiveScan-wait
+  parameters:
+    maxDuration: 2
+- type: outputSummary
+  parameters:
+    format: Long
+    summaryFile: /home/zap/zap_api_out.json
+- type: report
+  parameters:
+    reportDir: /zap/wrk/
+    reportFile: zap-api-report.html
+    reportTitle: ZAP API Scanning Report
+    template: traditional-html

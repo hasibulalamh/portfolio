@@ -1,0 +1,70 @@
+# =============================================================================
+# Apache virtual host for the Laravel portfolio API — example configuration
+# =============================================================================
+#
+# How to use:
+#   1. Copy to /etc/apache2/sites-available/portfolio-api.conf (Debian/Ubuntu),
+#      then `a2ensite portfolio-api` or paste into your own config.
+#   2. Replace ServerName, the DocumentRoot path, and the php-fpm socket
+#      version (8.4 here — match the PHP you installed).
+#   3. Requires mod_headers and mod_proxy_fcgi:
+#        a2enmod headers proxy_fcgi setenvif
+#      then `apachectl configtest` and `systemctl reload apache2`.
+#
+# What this adds on top of the app:
+#   - The SAME security headers the app's SecurityHeaders middleware sets, so
+#     they are present even on responses that never reach Laravel (static
+#     files, 404s answered by Apache itself).
+#   - X-Powered-By unset at the response level (the app also strips it, but
+#     this guarantees it never leaves the server even when the PHP SAPI adds
+#     it after the script runs).
+#
+# What deliberately stays in the app:
+#   - CORS headers (Access-Control-Allow-*). The API serves an explicit,
+#     credentials-enabled allowlist driven by config/cors.php + env vars and it
+#     must answer preflight OPTIONS per-request. A static Header set for ACAO
+#     here would bypass that allowlist — do NOT add one.
+#
+# Note on `Header always`: without `always`, mod_headers skips headers on
+# error responses (4xx/5xx). `always` covers those too.
+#
+# Put this block behind TLS (Let's Encrypt / certbot) — these headers
+# complement HTTPS, they do not replace it.
+
+<VirtualHost *:80>
+    ServerName api.example.com
+    DocumentRoot /var/www/portfolio/portfolio-backend/public
+
+    # ---- Security headers (same policy as App\Http\Middleware\SecurityHeaders)
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Cross-Origin-Resource-Policy "same-origin"
+    Header always set Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; form-action 'none'"
+
+    # Hide the PHP version banner php-fpm appends when expose_php is on.
+    Header unset X-Powered-By
+
+    <Directory /var/www/portfolio/portfolio-backend/public>
+        Options -Indexes -MultiViews
+        AllowOverride None
+        Require all granted
+
+        # Let Laravel's front controller answer requests that are not files.
+        FallbackResource /index.php
+    </Directory>
+
+    <Directory /var/www/portfolio/portfolio-backend/public>
+        # Reject any dotfile except the well-known directory.
+        <IfModule mod_rewrite.c>
+            RewriteEngine On
+            RewriteRule /\.(?!well-known).* - [F]
+        </IfModule>
+    </Directory>
+
+    # Send .php files to php-fpm.
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/run/php/php8.4-fpm.sock|fcgi://localhost"
+    </FilesMatch>
+
+    ErrorLog ${APACHE_LOG_DIR}/portfolio-api-error.log
+    CustomLog ${APACHE_LOG_DIR}/portfolio-api-access.log combined
+</VirtualHost>

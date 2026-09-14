@@ -346,10 +346,14 @@ export function Contact({ hero = {}, contactInfo = {} }) {
                   />
                 </div>
                 {/* Field names match the API payload keys exactly. */}
+                {/* Date is optional in the API (nullable) and in the UI — Field
+                    defaults to required, so opt out or an empty date silently
+                    blocks native form submission before onSubmit ever runs. */}
                 <Field
                   label="Preferred Date"
                   name="preferred_date"
                   type="date"
+                  required={false}
                   error={fieldErrors.preferred_date}
                 />
                 <div>

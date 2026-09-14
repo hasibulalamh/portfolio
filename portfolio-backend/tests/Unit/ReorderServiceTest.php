@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\ReorderService;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -15,21 +16,13 @@ use Tests\TestCase;
  * which are strings), and the return value is the count of rows the updates
  * actually touched.
  *
- * So the classes below stub the two moving parts the decision depends on — the
- * DB facade's transaction() and a fake eloquent builder whose whereKey() +
- * update() record the query — with zero SQL executed. The real closure is
- * passed through untouched, which is exactly how the method would behave in the
- * integration suite, minus the persistence.
+ * We intercept DB::transaction and fake the model query builder to record
+ * updates without executing SQL.
  */
 class ReorderServiceTest extends TestCase
 {
     /**
      * A fake Eloquent query builder that records the updates it is asked to run.
-     *
-     * ReorderService calls `$class::query()->whereKey($id)->update([...])`,
-     * so this is a chain of three calls the fake has to swallow. `whereKey()`
-     * and `update()` mutate the same instance, letting the counts below observe
-     * each whereKey/update pair.
      */
     private function builder(array $affected = []): object
     {
@@ -72,7 +65,33 @@ class ReorderServiceTest extends TestCase
             ->once()
             ->andReturnUsing(fn ($closure) => $closure());
 
-        $updated = app(ReorderService::class)->reorder($builder, [
+        // The real service calls $modelClass::query() which returns an Eloquent
+        // builder. We fake the query chain by intercepting the model class.
+        $fakeModel = new class($builder)
+        {
+            private $builder;
+
+            public function __construct($builder)
+            {
+                $this->builder = $builder;
+            }
+
+            public static function query()
+            {
+                // This will be called by the service; return our fake builder
+                return app('reorder_fake_builder');
+            }
+        };
+
+        app()->bind('reorder_fake_builder', fn () => $builder);
+
+        // Since the service uses $modelClass::query(), we need to make the model
+        // class return our builder. Bind a fake model in the container.
+        $fakeClass = get_class($fakeModel);
+        app()->bind($fakeClass, fn () => $fakeModel);
+
+        $service = new ReorderService;
+        $updated = $service->reorder($fakeClass, [
             ['id' => 9, 'order' => 0],
             ['id' => 7, 'order' => 1],
         ]);
@@ -98,7 +117,10 @@ class ReorderServiceTest extends TestCase
 
         DB::shouldReceive('transaction')->once()->andReturnUsing(fn ($closure) => $closure());
 
-        app(ReorderService::class)->reorder($builder, [
+        $fakeClass = $this->fakeModelClass($builder);
+
+        $service = new ReorderService;
+        $service->reorder($fakeClass, [
             ['id' => 1, 'order' => '4'],
         ]);
 
@@ -114,7 +136,10 @@ class ReorderServiceTest extends TestCase
 
         DB::shouldReceive('transaction')->once()->andReturnUsing(fn ($closure) => $closure());
 
-        $updated = app(ReorderService::class)->reorder($builder, [
+        $fakeClass = $this->fakeModelClass($builder);
+
+        $service = new ReorderService;
+        $updated = $service->reorder($fakeClass, [
             ['id' => 99, 'order' => 0],
         ]);
 
@@ -131,8 +156,38 @@ class ReorderServiceTest extends TestCase
             ->withArgs(fn ($closure) => is_callable($closure))
             ->andReturnUsing(fn ($closure) => $closure());
 
-        app(ReorderService::class)->reorder($this->builder([1]), [
+        $builder = $this->builder([1]);
+        $fakeClass = $this->fakeModelClass($builder);
+
+        $service = new ReorderService;
+        $service->reorder($fakeClass, [
             ['id' => 1, 'order' => 0],
         ]);
+    }
+
+    /**
+     * Create a fake model class that returns the given builder from query().
+     */
+    private function fakeModelClass(object $builder): string
+    {
+        $class = new class($builder)
+        {
+            private object $builder;
+
+            public function __construct(object $builder)
+            {
+                $this->builder = $builder;
+            }
+
+            public static function query()
+            {
+                return app('reorder_fake_builder');
+            }
+        };
+
+        $className = get_class($class);
+        app()->bind('reorder_fake_builder', fn () => $builder);
+
+        return $className;
     }
 }

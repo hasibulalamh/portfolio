@@ -1,0 +1,256 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════
+  # Backend — PHPUnit (Unit, Feature, Regression, Contract)
+  # ═══════════════════════════════════════════════════════════════
+  backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: portfolio_backend_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, ctype, json, bcmath, pdo_mysql, tokenizer
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('portfolio-backend/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install dependencies
+        working-directory: portfolio-backend
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment
+        working-directory: portfolio-backend
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+
+      - name: Wait for MySQL
+        run: |
+          until mysqladmin ping -h 127.0.0.1 --silent; do
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+
+      - name: Create test database
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot -e \
+            "CREATE DATABASE IF NOT EXISTS portfolio_backend_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+      - name: Run PHPUnit
+        working-directory: portfolio-backend
+        run: php artisan test --no-coverage
+
+  # ═══════════════════════════════════════════════════════════════
+  # Frontend — Vitest unit tests
+  # ═══════════════════════════════════════════════════════════════
+  frontend:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: portfolio-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: portfolio-frontend
+        run: npm ci
+
+      - name: Run Vitest
+        working-directory: portfolio-frontend
+        run: npx vitest run
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin — Vitest unit tests
+  # ═══════════════════════════════════════════════════════════════
+  admin:
+    name: Admin Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: portfolio-admin/package-lock.json
+
+      - name: Install dependencies
+        working-directory: portfolio-admin
+        run: npm ci
+
+      - name: Run Vitest
+        working-directory: portfolio-admin
+        run: npx vitest run
+
+  # ═══════════════════════════════════════════════════════════════
+  # Smoke — lightweight pre-deploy check
+  # ═══════════════════════════════════════════════════════════════
+  smoke:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, admin]
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: portfolio_backend_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, ctype, json, bcmath, pdo_mysql, tokenizer
+          coverage: none
+
+      - name: Install Composer dependencies
+        working-directory: portfolio-backend
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment
+        working-directory: portfolio-backend
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+
+      - name: Wait for MySQL
+        run: |
+          until mysqladmin ping -h 127.0.0.1 --silent; do
+            sleep 2
+          done
+
+      - name: Create test database
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot -e \
+            "CREATE DATABASE IF NOT EXISTS portfolio_backend_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+      - name: Start API server
+        working-directory: portfolio-backend
+        run: |
+          php artisan serve --port=8000 &
+          sleep 3
+
+      - name: Run smoke test
+        run: |
+          API_URL=http://127.0.0.1:8000/api \
+          PUBLIC_URL=http://127.0.0.1:8000 \
+          ADMIN_URL=http://127.0.0.1:8000 \
+          bash load/smoke-test.sh
+
+  # ═══════════════════════════════════════════════════════════════
+  # Mutation — Infection (runs only on push to main)
+  # ═══════════════════════════════════════════════════════════════
+  mutation:
+    name: Mutation Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: portfolio_backend_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP with pcov
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, ctype, json, bcmath, pdo_mysql, tokenizer, pcov
+          coverage: pcov
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('portfolio-backend/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install dependencies
+        working-directory: portfolio-backend
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment
+        working-directory: portfolio-backend
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+
+      - name: Wait for MySQL
+        run: |
+          until mysqladmin ping -h 127.0.0.1 --silent; do
+            sleep 2
+          done
+
+      - name: Create test database
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot -e \
+            "CREATE DATABASE IF NOT EXISTS portfolio_backend_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+      - name: Run Infection
+        working-directory: portfolio-backend
+        run: vendor/bin/infection --threads=4 --no-progress --min-msi=90 --min-covered-msi=95

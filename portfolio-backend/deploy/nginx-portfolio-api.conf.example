@@ -1,0 +1,67 @@
+# =============================================================================
+# nginx server block for the Laravel portfolio API — example configuration
+# =============================================================================
+#
+# How to use:
+#   1. Copy to /etc/nginx/sites-available/portfolio-api and symlink it into
+#      sites-enabled, or paste the server block into your own config.
+#   2. Replace server_name, the root path, and the php-fpm socket version
+#      (8.4 here — match the PHP you installed).
+#   3. `nginx -t` then `systemctl reload nginx`.
+#
+# What this adds on top of the app:
+#   - The SAME security headers the app's SecurityHeaders middleware sets, so
+#     they are present even on responses that never reach Laravel (static
+#     files, 404s answered by nginx itself, and anything served before the
+#     framework boots).
+#   - X-Powered-By removed at the php-fpm boundary (the app also strips it, but
+#     nginx hides it even if the PHP SAPI adds it after the script runs).
+#
+# What deliberately stays in the app:
+#   - CORS headers (Access-Control-Allow-*). The API serves an explicit,
+#     credentials-enabled allowlist driven by config/cors.php + env vars and it
+#     must answer preflight OPTIONS per-request. A static add_header for ACAO
+#     here would bypass that allowlist — do NOT add one.
+#
+# Header-inheritance gotcha: if any location block inside this server adds its
+# own `add_header`, nginx stops inheriting the server-level ones for that
+# location. Keep this server block's location blocks free of add_header (as
+# below), or repeat the headers inside any location that sets its own.
+
+server {
+    listen 80;
+    listen [::]:80;
+    # Put this block behind TLS (certbot or your own certs) — these headers
+    # complement HTTPS, they do not replace it.
+    server_name api.example.com;
+
+    root /var/www/portfolio/portfolio-backend/public;
+    index index.php;
+
+    charset utf-8;
+    client_max_body_size 20M;
+
+    # ---- Security headers (same policy as App\Http\Middleware\SecurityHeaders)
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
+    add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; form-action 'none'" always;
+
+    # Hide the PHP version banner php-fpm appends when expose_php is on.
+    # (Also hides any X-Powered-By the app set — defense in depth.)
+    fastcgi_hide_header X-Powered-By;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # Requests that are not real files hit the Laravel front controller.
+    location ~ ^/index\.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+
+    # Reject anything that is not a real file or the front controller.
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
