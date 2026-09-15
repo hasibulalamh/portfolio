@@ -1,7 +1,0 @@
-[
-  {
-    "name": "tech icon dropdown opens and is usable (not clipped away)",
-    "pass": true,
-    "detail": "12 options, 320px of the dropdown visible inside main (dropdown is 320px tall)"
-  }
-]
