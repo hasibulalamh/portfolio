@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -88,8 +89,8 @@ class UploadService
                 'max_kb' => 10240,
                 'folder' => 'cv',
             ],
-            // FileUpload.jsx sends no type, so this is the common path: accept
-            // any supported image or PDF at the largest of the above limits.
+            // Generic callers may omit the type, so accept any supported image
+            // or PDF at the largest of the above limits.
             default => [
                 'mimetypes' => [...self::IMAGE_MIMES, ...self::DOC_MIMES],
                 'max_kb' => 10240,
@@ -118,8 +119,18 @@ class UploadService
             throw new \RuntimeException('Failed to write the uploaded file to storage.');
         }
 
+        $url = $this->urlFor($disk, $path);
+
+        Log::info('Media upload stored.', [
+            'type' => $type,
+            'disk' => $disk,
+            'path' => $path,
+            'url' => $url,
+            'object_exists' => Storage::disk($disk)->exists($path),
+        ]);
+
         return [
-            'url' => $this->urlFor($disk, $path),
+            'url' => $url,
             'path' => $path,
             'disk' => $disk,
         ];
@@ -140,9 +151,15 @@ class UploadService
 
     private function urlFor(string $disk, string $path): string
     {
-        // R2's public hostname comes from R2_URL. If that is unset, fall back to
-        // Storage::url so the endpoint still returns something usable.
-        if ($disk === 'r2' && $base = config('filesystems.disks.r2.url')) {
+        // R2's public hostname must be explicit. Falling back to the local
+        // disk URL here would persist a localhost URL in production.
+        if ($disk === 'r2') {
+            $base = config('filesystems.disks.r2.url');
+
+            if (! is_string($base) || trim($base) === '') {
+                throw new \RuntimeException('R2_URL must be configured for public media URLs.');
+            }
+
             return rtrim($base, '/').'/'.ltrim($path, '/');
         }
 

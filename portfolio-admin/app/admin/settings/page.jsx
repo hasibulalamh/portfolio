@@ -290,6 +290,7 @@ export default function SettingsPage() {
                   <FileUpload
                     label="Logo"
                     accept="image/*"
+                    uploadType="logo"
                     onUploadComplete={(url) => setValue('logo_path', url || '')}
                     initialValue={logoPath}
                     onUploadingChange={(value) => setUploading((prev) => ({ ...prev, logo: value }))}
@@ -352,6 +353,7 @@ export default function SettingsPage() {
                   label="Favicon"
                   accept="image/*"
                   maxSize={1 * 1024 * 1024}
+                  uploadType="favicon"
                   onUploadComplete={(url) => setValue('favicon_path', url || '')}
                   initialValue={faviconPath}
                   onUploadingChange={(value) => setUploading((prev) => ({ ...prev, favicon: value }))}

@@ -38,6 +38,7 @@ export function FileUpload({
   maxSize = 5 * 1024 * 1024,
   onUploadComplete,
   initialValue = null,
+  uploadType = 'generic',
   // Lets the parent form disable its submit button while an upload is in
   // flight, so a save can't race the URL it depends on.
   onUploadingChange,
@@ -90,6 +91,7 @@ export function FileUpload({
     try {
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('type', uploadType)
 
       const result = await apiCall('POST', '/admin/upload', formData)
 

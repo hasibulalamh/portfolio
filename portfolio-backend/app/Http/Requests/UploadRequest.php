@@ -35,8 +35,8 @@ class UploadRequest extends FormRequest
                 'mimetypes:'.implode(',', $rules['mimetypes']),
                 'max:'.$rules['max_kb'],
             ],
-            // Optional: FileUpload.jsx sends only the file, so uploads without
-            // a type land in a generic folder.
+            // Optional for other shared upload callers; the settings logo and
+            // favicon controls send their explicit types.
             'type' => ['nullable', 'string', Rule::in(UploadService::types())],
         ];
     }

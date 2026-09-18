@@ -9,6 +9,7 @@ use App\Http\Responses\ApiResponse;
 use App\Models\Setting;
 use App\Services\SingletonResetService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 
 class SettingController extends Controller
 {
@@ -23,10 +24,21 @@ class SettingController extends Controller
     public function update(SettingRequest $request): JsonResponse
     {
         $settings = Setting::singleton();
-        $settings->update($request->validated());
+        // Only fields present in the request are changed. In particular, an
+        // unrelated partial update must not turn an existing media reference
+        // into null because the client did not include it.
+        $settings->fill($request->validated())->save();
+        $settings->refresh();
+
+        Log::info('Admin settings persisted.', [
+            'id' => $settings->getKey(),
+            'logo_type' => $settings->logo_type,
+            'logo_path' => $settings->logo_path,
+            'favicon_path' => $settings->favicon_path,
+        ]);
 
         return ApiResponse::success(
-            new SettingResource($settings->refresh()),
+            new SettingResource($settings),
             'Settings updated successfully.',
         );
     }
