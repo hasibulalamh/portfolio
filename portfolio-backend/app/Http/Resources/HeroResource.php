@@ -20,7 +20,16 @@ class HeroResource extends JsonResource
             // predating the migration holds null. Coerce here so the frontend
             // can map over them without a per-field Array.isArray guard.
             'roles' => $this->roles ?? [],
-            'tech_badges' => $this->tech_badges ?? [],
+            'tech_badges' => array_map(
+                static fn (array $badge): array => [
+                    ...$badge,
+                    'logo_type' => ($badge['logo_type'] ?? 'library') === 'custom'
+                        ? 'custom'
+                        : 'library',
+                    'logo_url' => $badge['logo_url'] ?? null,
+                ],
+                $this->tech_badges ?? [],
+            ),
             'is_available' => (bool) $this->is_available,
             'availability_label' => $this->availability_label,
             'cta_primary_text' => $this->cta_primary_text,

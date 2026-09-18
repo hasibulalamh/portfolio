@@ -32,6 +32,8 @@ class HeroRequest extends FormRequest
             'tech_badges' => ['nullable', 'array', 'max:'.Hero::MAX_TECH_BADGES],
             'tech_badges.*.label' => ['required', 'string', 'max:60'],
             'tech_badges.*.icon_slug' => ['nullable', 'string', 'max:100'],
+            'tech_badges.*.logo_type' => ['nullable', 'string', Rule::in(['library', 'custom'])],
+            'tech_badges.*.logo_url' => ['nullable', 'url', 'max:2048', 'required_if:tech_badges.*.logo_type,custom'],
 
             'is_available' => ['boolean'],
             'availability_label' => ['nullable', 'string', 'max:120'],
@@ -92,6 +94,12 @@ class HeroRequest extends FormRequest
                     // check silently; null is the honest "no logo picked".
                     'icon_slug' => filled($badge['icon_slug'] ?? null)
                         ? trim((string) $badge['icon_slug'])
+                        : null,
+                    'logo_type' => ($badge['logo_type'] ?? 'library') === 'custom'
+                        ? 'custom'
+                        : 'library',
+                    'logo_url' => filled($badge['logo_url'] ?? null)
+                        ? trim((string) $badge['logo_url'])
                         : null,
                 ],
                 array_filter(

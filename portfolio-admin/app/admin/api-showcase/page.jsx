@@ -36,10 +36,12 @@ export default function ApiShowcasePage() {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(apiShowcaseSchema),
-    defaultValues: { icon_name: '', icon_slug: null, title: '', description: '', endpoints: ['', ''], order: 0 },
+    defaultValues: { icon_name: '', icon_slug: null, logo_type: 'library', logo_url: null, title: '', description: '', endpoints: ['', ''], order: 0 },
   })
 
   const iconSlug = watch('icon_slug')
+  const logoType = watch('logo_type')
+  const logoUrl = watch('logo_url')
   const title = watch('title')
 
   const { fields, append, remove } = useFieldArray({
@@ -104,6 +106,8 @@ export default function ApiShowcasePage() {
     reset({
       icon_name: item.icon_name || '',
       icon_slug: item.icon_slug || null,
+      logo_type: item.logo_type || 'library',
+      logo_url: item.logo_url || null,
       title: item.title || '',
       description: item.description || '',
       endpoints: Array.isArray(item.endpoints) && item.endpoints.length > 0 ? item.endpoints : [''],
@@ -140,6 +144,13 @@ export default function ApiShowcasePage() {
               <TechIconPicker
                 value={iconSlug}
                 onChange={(slug) => setValue('icon_slug', slug, { shouldDirty: true })}
+                logoType={logoType}
+                logoUrl={logoUrl}
+                onLogoChange={(type, url) => {
+                  setValue('logo_type', type, { shouldDirty: true })
+                  setValue('logo_url', url, { shouldDirty: true })
+                  if (type === 'custom') setValue('icon_slug', null, { shouldDirty: true })
+                }}
                 label="Technology Logo"
                 query={title || ''}
                 disabled={isSubmitting}

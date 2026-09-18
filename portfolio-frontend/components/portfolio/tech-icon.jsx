@@ -108,7 +108,23 @@ export function TechIcon({
  * Falls back to `null` for an unknown slug — callers already branch on
  * `icon_slug` and render their own neutral badge there.
  */
-export function TechIconTile({ slug, title, className = '' }) {
+export function TechIconTile({ slug, title, logoType = 'library', logoUrl = null, className = '' }) {
+  if (logoType === 'custom' && logoUrl) {
+    return (
+      <span
+        className={`tech-glow group/tile relative flex h-12 w-12 items-center justify-center ${className}`}
+        style={ACCENT_GLOW}
+      >
+        <span aria-hidden className="tech-glow__bloom" />
+        <img
+          src={logoUrl}
+          alt={title || 'Custom technology logo'}
+          className="relative h-8 w-8 object-contain"
+        />
+      </span>
+    )
+  }
+
   const glow = brandGlowStyle(slug)
   if (!glow) return null
 

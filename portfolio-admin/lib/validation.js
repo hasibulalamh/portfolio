@@ -50,6 +50,8 @@ export const heroSchema = z.object({
       z.object({
         label: z.string().min(1, 'Badge label is required'),
         icon_slug: z.string().nullable().optional(),
+        logo_type: z.enum(['library', 'custom']).optional(),
+        logo_url: z.string().url().nullable().optional(),
       }),
     )
     .max(6)
@@ -109,6 +111,8 @@ export const skillSchema = z.object({
   // Simple Icons slug chosen via TechIconPicker. Optional: a skill with no
   // matching brand logo falls back to its two-letter badge.
   icon_slug: z.string().nullable().optional(),
+  logo_type: z.enum(['library', 'custom']).optional(),
+  logo_url: z.string().url().nullable().optional(),
   order: z.number().int().nonnegative().optional(),
 })
 
@@ -167,6 +171,8 @@ export const apiShowcaseSchema = z.object({
   icon_name: z.string().optional(),
   // Simple Icons slug chosen via TechIconPicker.
   icon_slug: z.string().nullable().optional(),
+  logo_type: z.enum(['library', 'custom']).optional(),
+  logo_url: z.string().url().nullable().optional(),
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
   endpoints: z.array(z.string()).optional(),

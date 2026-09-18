@@ -256,7 +256,9 @@ export function Hero({ hero = {} }) {
                 transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
                 title={tech.label}
               >
-                {tech.icon_slug ? (
+                {tech.logo_type === 'custom' && tech.logo_url ? (
+                  <img src={tech.logo_url} alt={tech.label} className="h-6 w-6 object-contain" />
+                ) : tech.icon_slug ? (
                   <TechIcon
                     slug={tech.icon_slug}
                     title={tech.label}

@@ -27,6 +27,8 @@ class ApiShowcaseRequest extends FormRequest
             'icon_name' => ['nullable', 'string', 'max:255'],
             // A Simple Icons slug picked in the admin panel, e.g. "laravel".
             'icon_slug' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9-]+$/'],
+            'logo_type' => ['nullable', 'string', 'in:library,custom'],
+            'logo_url' => ['nullable', 'url', 'max:2048', 'required_if:logo_type,custom'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             // Blank rows are already dropped by the admin page before submit.

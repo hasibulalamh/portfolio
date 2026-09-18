@@ -13,6 +13,8 @@ class Skill extends Model
         'name',
         'icon',
         'icon_slug',
+        'logo_type',
+        'logo_url',
         'order',
     ];
 

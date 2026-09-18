@@ -62,7 +62,9 @@ export function APIShowcase({ showcases = [] }) {
                 {/* Prefer the real brand logo; fall back to the lucide icon
                     with a glow for entries that predate the picker or describe
                     a concept with no brand mark. */}
-                {api.icon_slug ? (
+                {api.logo_type === 'custom' && api.logo_url ? (
+                  <TechIconTile logoType="custom" logoUrl={api.logo_url} title={api.title} />
+                ) : api.icon_slug ? (
                   <TechIconTile slug={api.icon_slug} title={api.title} />
                 ) : (
                   <span

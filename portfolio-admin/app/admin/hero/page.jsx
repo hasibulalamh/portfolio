@@ -353,7 +353,14 @@ export default function HeroPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => appendBadge({ label: '', icon_slug: null })}
+                  onClick={() =>
+                    appendBadge({
+                      label: '',
+                      icon_slug: null,
+                      logo_type: 'library',
+                      logo_url: null,
+                    })
+                  }
                   disabled={isSaving || badgesFields.length >= MAX_TECH_BADGES}
                 >
                   <Plus className="w-4 h-4 mr-1" aria-hidden="true" />
@@ -412,6 +419,15 @@ export default function HeroPage() {
                         onChange={(slug) =>
                           setValue(`tech_badges.${index}.icon_slug`, slug, { shouldDirty: true })
                         }
+                        logoType={watch(`tech_badges.${index}.logo_type`) || 'library'}
+                        logoUrl={watch(`tech_badges.${index}.logo_url`) || null}
+                        onLogoChange={(type, url) => {
+                          setValue(`tech_badges.${index}.logo_type`, type, { shouldDirty: true })
+                          setValue(`tech_badges.${index}.logo_url`, url, { shouldDirty: true })
+                          if (type === 'custom') {
+                            setValue(`tech_badges.${index}.icon_slug`, null, { shouldDirty: true })
+                          }
+                        }}
                         query={watch(`tech_badges.${index}.label`) || ''}
                         disabled={isSaving}
                       />

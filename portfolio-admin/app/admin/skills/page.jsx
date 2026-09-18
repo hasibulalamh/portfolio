@@ -49,10 +49,12 @@ export default function SkillsPage() {
     formState: { errors: skillErrors, isSubmitting: isSavingSkill },
   } = useForm({
     resolver: zodResolver(skillSchema),
-    defaultValues: { name: '', icon_slug: null, order: 0 },
+    defaultValues: { name: '', icon_slug: null, logo_type: 'library', logo_url: null, order: 0 },
   })
 
   const skillIconSlug = watchSkill('icon_slug')
+  const skillLogoType = watchSkill('logo_type')
+  const skillLogoUrl = watchSkill('logo_url')
   const skillName = watchSkill('name')
 
   const loadSkills = useCallback(
@@ -150,7 +152,7 @@ export default function SkillsPage() {
       showToast(editingSkillId ? 'Skill updated' : 'Skill created', 'success')
       setEditingSkillId(null)
       setShowSkillForm(false)
-      resetSkill({ name: '', icon_slug: null, order: 0 })
+      resetSkill({ name: '', icon_slug: null, logo_type: 'library', logo_url: null, order: 0 })
       await loadSkills(selectedCategory.id)
     } else {
       showToast(result.message || 'Failed to save', 'error')
@@ -168,6 +170,8 @@ export default function SkillsPage() {
     resetSkill({
       name: skill.name || '',
       icon_slug: skill.icon_slug || null,
+      logo_type: skill.logo_type || 'library',
+      logo_url: skill.logo_url || null,
       order: skill.order ?? 0,
     })
     setShowSkillForm(true)
@@ -194,7 +198,7 @@ export default function SkillsPage() {
       if (editingSkillId === id) {
         setEditingSkillId(null)
         setShowSkillForm(false)
-        resetSkill({ name: '', icon_slug: null, order: 0 })
+        resetSkill({ name: '', icon_slug: null, logo_type: 'library', logo_url: null, order: 0 })
       }
       if (selectedCategory) {
         await loadSkills(selectedCategory.id)
@@ -411,7 +415,7 @@ export default function SkillsPage() {
                 aria-label="Add skill"
                 onClick={() => {
                   setEditingSkillId(null)
-                  resetSkill({ name: '', icon_slug: null, order: 0 })
+                  resetSkill({ name: '', icon_slug: null, logo_type: 'library', logo_url: null, order: 0 })
                   setShowSkillForm(!showSkillForm)
                 }}
               >
@@ -436,6 +440,13 @@ export default function SkillsPage() {
                     <TechIconPicker
                       value={skillIconSlug}
                       onChange={(slug) => setSkillValue('icon_slug', slug, { shouldDirty: true })}
+                      logoType={skillLogoType}
+                      logoUrl={skillLogoUrl}
+                      onLogoChange={(type, url) => {
+                        setSkillValue('logo_type', type, { shouldDirty: true })
+                        setSkillValue('logo_url', url, { shouldDirty: true })
+                        if (type === 'custom') setSkillValue('icon_slug', null, { shouldDirty: true })
+                      }}
                       // Seed the search with the skill name, e.g. typing
                       // "Laravel" as the name pre-fills the logo search.
                       query={skillName || ''}
@@ -453,7 +464,7 @@ export default function SkillsPage() {
                       onClick={() => {
                         setShowSkillForm(false)
                         setEditingSkillId(null)
-                        resetSkill({ name: '', icon_slug: null, order: 0 })
+                        resetSkill({ name: '', icon_slug: null, logo_type: 'library', logo_url: null, order: 0 })
                       }}
                     >
                       Cancel

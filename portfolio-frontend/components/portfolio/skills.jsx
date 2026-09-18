@@ -40,6 +40,8 @@ export function Skills({ categories = [] }) {
           name: skill.name,
           icon: skill.icon,
           icon_slug: skill.icon_slug,
+          logo_type: skill.logo_type,
+          logo_url: skill.logo_url,
           category: category.name,
         })),
       ),
@@ -108,7 +110,9 @@ export function Skills({ categories = [] }) {
                         the initials badge. Both float on the page background
                         with only a glow — the fallback has no brand colour to
                         borrow, so it glows in the theme's own violet accent. */}
-                    {skill.icon_slug ? (
+                    {skill.logo_type === 'custom' && skill.logo_url ? (
+                      <TechIconTile logoType="custom" logoUrl={skill.logo_url} title={skill.name} />
+                    ) : skill.icon_slug ? (
                       <TechIconTile slug={skill.icon_slug} title={skill.name} />
                     ) : (
                       <span

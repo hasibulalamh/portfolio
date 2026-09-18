@@ -26,6 +26,8 @@ class SkillRequest extends FormRequest
             // Lowercase alphanumerics and dashes is exactly the slug alphabet
             // that library uses, so anything else is a bad write.
             'icon_slug' => ['nullable', 'string', 'max:255', 'regex:/^[a-z0-9-]+$/'],
+            'logo_type' => ['nullable', 'string', 'in:library,custom'],
+            'logo_url' => ['nullable', 'url', 'max:2048', 'required_if:logo_type,custom'],
             'order' => ['nullable', 'integer', 'min:0'],
         ];
     }

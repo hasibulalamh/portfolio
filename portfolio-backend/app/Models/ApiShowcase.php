@@ -10,6 +10,8 @@ class ApiShowcase extends Model
     protected $fillable = [
         'icon_name',
         'icon_slug',
+        'logo_type',
+        'logo_url',
         'title',
         'description',
         'endpoints',

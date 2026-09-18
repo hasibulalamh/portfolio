@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { getIcon, searchIcons } from '@/lib/tech-icons'
 import { TechIconTile } from './TechIcon'
+import { FileUpload } from './FileUpload'
 import { Input } from '@/components/ui/input'
 
 /**
@@ -27,6 +28,9 @@ export function TechIconPicker({
   label = 'Technology Logo',
   query: seedQuery = '',
   disabled = false,
+  logoType = 'library',
+  logoUrl = null,
+  onLogoChange,
 }) {
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -60,6 +64,7 @@ export function TechIconPicker({
 
   const choose = (slug) => {
     onChange?.(slug)
+    onLogoChange?.('library', null)
     setQuery('')
     setIsOpen(false)
   }
@@ -91,6 +96,44 @@ export function TechIconPicker({
         {label}
       </label>
 
+      <div className="mb-3 flex gap-2" role="tablist" aria-label={`${label} source`}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={logoType !== 'custom'}
+          onClick={() => onLogoChange?.('library', null)}
+          disabled={disabled}
+          className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+            logoType !== 'custom' ? 'bg-primary text-primary-foreground' : 'border border-border'
+          }`}
+        >
+          Search Library
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={logoType === 'custom'}
+          onClick={() => onLogoChange?.('custom', logoUrl)}
+          disabled={disabled}
+          className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+            logoType === 'custom' ? 'bg-primary text-primary-foreground' : 'border border-border'
+          }`}
+        >
+          Upload Custom Logo
+        </button>
+      </div>
+
+      {logoType === 'custom' ? (
+        <FileUpload
+          label={null}
+          accept="image/svg+xml,image/png,image/jpeg,image/webp"
+          maxSize={5 * 1024 * 1024}
+          uploadType="technology-logo"
+          initialValue={logoUrl}
+          showAltText={false}
+          onUploadComplete={(url) => onLogoChange?.('custom', url)}
+        />
+      ) : (
       <div className="flex items-center gap-2">
         {/* Preview of the current selection, or an empty placeholder box so the
             row does not reflow once something is picked. Uses the same tinted
@@ -222,6 +265,7 @@ export function TechIconPicker({
             })
           )}
         </ul>
+      )}
       )}
     </div>
   )

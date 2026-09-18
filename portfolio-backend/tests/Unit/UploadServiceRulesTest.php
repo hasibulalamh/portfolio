@@ -70,6 +70,16 @@ class UploadServiceRulesTest extends TestCase
         $this->assertNotContains('image/jpeg', $mimes);
     }
 
+    public function test_the_technology_logo_type_uses_the_shared_image_limits_and_folder(): void
+    {
+        $rules = UploadService::rulesFor(UploadService::TYPE_TECHNOLOGY_LOGO);
+
+        $this->assertContains('image/svg+xml', $rules['mimetypes']);
+        $this->assertContains('image/png', $rules['mimetypes']);
+        $this->assertSame(5120, $rules['max_kb']);
+        $this->assertSame('technology-logos', $rules['folder']);
+    }
+
     public function test_image_types_never_accept_a_pdf(): void
     {
         foreach ([
