@@ -192,3 +192,22 @@ export function searchIcons(query, limit = 12) {
     .slice(0, limit)
     .map(({ slug, title, hex }) => ({ slug, title, hex }))
 }
+
+/**
+ * Classify search results without guessing at semantic relationships.
+ *
+ * Only an exact normalized title or slug is an exact logo match. Every other
+ * search hit remains an intentional suggestion that the admin must click.
+ */
+export function getLogoMatch(query, results) {
+  const normalizedQuery = normalise(query)
+  const exact = (Array.isArray(results) ? results : []).filter(
+    (icon) =>
+      normalise(icon.title) === normalizedQuery ||
+      normalise(icon.slug) === normalizedQuery,
+  )
+
+  return exact.length > 0
+    ? { type: 'exact', exact, related: [] }
+    : { type: normalizedQuery ? 'related' : 'none', exact: [], related: results || [] }
+}

@@ -447,6 +447,7 @@ export default function SkillsPage() {
                         setSkillValue('logo_url', url, { shouldDirty: true })
                         if (type === 'custom') setSkillValue('icon_slug', null, { shouldDirty: true })
                       }}
+                      uploadType="skill-logo"
                       // Seed the search with the skill name, e.g. typing
                       // "Laravel" as the name pre-fills the logo search.
                       query={skillName || ''}

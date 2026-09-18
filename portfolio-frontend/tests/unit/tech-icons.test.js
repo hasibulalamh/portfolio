@@ -4,6 +4,7 @@ import {
   getBrandColor,
   getDisplayBrandColor,
   getIcon,
+  getLogoMatch,
   iconSvgUrl,
   searchIcons,
 } from '../../lib/tech-icons.js'
@@ -142,6 +143,39 @@ describe('searchIcons', () => {
   it('ranks an exact slug match first', () => {
     // Typing "go" must surface Go, not Godot.
     expect(searchIcons('go')[0].slug).toBe('go')
+  })
+
+  describe('getLogoMatch', () => {
+    it('classifies an exact title match', () => {
+      const results = searchIcons('Laravel')
+
+      expect(getLogoMatch('Laravel', results)).toMatchObject({
+        type: 'exact',
+        exact: [{ slug: 'laravel', title: 'Laravel' }],
+      })
+    })
+
+    it('accepts normalized official names such as Vue.js', () => {
+      expect(getLogoMatch('Vue.js', searchIcons('Vue.js')).type).toBe('exact')
+    })
+
+    it('keeps related results as suggestions instead of an exact match', () => {
+      const results = [{ slug: 'laravel', title: 'Laravel', hex: 'FF2D20' }]
+
+      expect(getLogoMatch('MVC Architecture', results)).toEqual({
+        type: 'related',
+        exact: [],
+        related: results,
+      })
+    })
+
+    it('reports no match for an empty query', () => {
+      expect(getLogoMatch('', [])).toEqual({
+        type: 'none',
+        exact: [],
+        related: [],
+      })
+    })
   })
 
   it('matches case-insensitively and ignores punctuation', () => {

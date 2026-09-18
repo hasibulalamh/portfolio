@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
-import { getIcon, searchIcons } from '@/lib/tech-icons'
+import { getIcon, getLogoMatch, searchIcons } from '@/lib/tech-icons'
 import { TechIconTile } from './TechIcon'
 import { FileUpload } from './FileUpload'
 import { Input } from '@/components/ui/input'
@@ -31,6 +31,7 @@ export function TechIconPicker({
   logoType = 'library',
   logoUrl = null,
   onLogoChange,
+  uploadType = 'skill-logo',
 }) {
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -41,6 +42,8 @@ export function TechIconPicker({
 
   const selected = getIcon(value)
   const results = useMemo(() => searchIcons(query), [query])
+  const match = useMemo(() => getLogoMatch(query, results), [query, results])
+  const selectableResults = match.type === 'exact' ? match.exact : match.related
 
   // Close on outside click; mirrors the Header account menu's behaviour.
   useEffect(() => {
@@ -69,24 +72,32 @@ export function TechIconPicker({
     setIsOpen(false)
   }
 
+  const chooseCustom = () => onLogoChange?.('custom', logoUrl)
+
+  const handleCustomUpload = (url) => {
+    // Removing the custom file is the same as choosing the normal fallback
+    // path; never submit logo_type=custom without a URL.
+    onLogoChange?.(url ? 'custom' : 'library', url)
+  }
+
   const handleKeyDown = (event) => {
     if (event.key === 'Escape') {
       setIsOpen(false)
       return
     }
 
-    if (!isOpen || results.length === 0) return
+    if (!isOpen || selectableResults.length === 0) return
 
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setHighlighted((i) => (i + 1) % results.length)
+      setHighlighted((i) => (i + 1) % selectableResults.length)
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
-      setHighlighted((i) => (i - 1 + results.length) % results.length)
+      setHighlighted((i) => (i - 1 + selectableResults.length) % selectableResults.length)
     } else if (event.key === 'Enter') {
       // The picker lives inside a form, so a bare Enter would submit it.
       event.preventDefault()
-      choose(results[highlighted].slug)
+      choose(selectableResults[highlighted].slug)
     }
   }
 
@@ -113,7 +124,7 @@ export function TechIconPicker({
           type="button"
           role="tab"
           aria-selected={logoType === 'custom'}
-          onClick={() => onLogoChange?.('custom', logoUrl)}
+          onClick={chooseCustom}
           disabled={disabled}
           className={`rounded-md px-3 py-1.5 text-xs font-medium ${
             logoType === 'custom' ? 'bg-primary text-primary-foreground' : 'border border-border'
@@ -126,12 +137,12 @@ export function TechIconPicker({
       {logoType === 'custom' ? (
         <FileUpload
           label={null}
-          accept="image/svg+xml,image/png,image/jpeg,image/webp"
+          accept="image/png,image/jpeg,image/webp"
           maxSize={5 * 1024 * 1024}
-          uploadType="technology-logo"
+          uploadType={uploadType}
           initialValue={logoUrl}
           showAltText={false}
-          onUploadComplete={(url) => onLogoChange?.('custom', url)}
+          onUploadComplete={handleCustomUpload}
         />
       ) : (
       <div className="flex items-center gap-2">
@@ -197,6 +208,7 @@ export function TechIconPicker({
           </button>
         )}
       </div>
+      )}
 
       {selected && (
         <p className="mt-1 text-xs text-muted-foreground">
@@ -212,18 +224,27 @@ export function TechIconPicker({
           aria-label="Matching technology logos"
           className="absolute z-50 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border border-border bg-popover p-1.5 shadow-xl"
         >
-          {results.length === 0 ? (
-            <li className="px-3 py-2.5 text-sm text-muted-foreground">
-              No logo found for &ldquo;{query}&rdquo;. Leave it empty to use the default icon.
+          {match.type !== 'exact' && query.trim().length > 0 && (
+            <li className="border-b border-border px-3 py-2.5 text-sm">
+              <p className="font-medium text-amber-500">
+                No exact logo found for &ldquo;{query}&rdquo;.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Related results are suggestions only. Select one explicitly or upload a custom logo.
+              </p>
+              <button
+                type="button"
+                onClick={chooseCustom}
+                disabled={disabled}
+                className="mt-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+              >
+                Upload Custom Logo
+              </button>
             </li>
-          ) : (
-            results.map((icon, index) => {
+          )}
+          {match.type === 'exact' ? (
+            match.exact.map((icon, index) => {
               const isHighlighted = index === highlighted
-              // searchIcons already ranks exact matches first, so the head of
-              // the list is the answer the admin most likely wants. Marking it
-              // saves reading the whole dropdown to confirm the obvious.
-              const isBest = index === 0
-
               return (
                 <li key={icon.slug}>
                   <button
@@ -240,32 +261,70 @@ export function TechIconPicker({
                     }`}
                   >
                     <TechIconTile slug={icon.slug} title={icon.title} />
-
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span
-                        className={`truncate text-sm ${
-                          isBest ? 'font-semibold text-foreground' : 'font-medium text-foreground/90'
-                        }`}
-                      >
+                      <span className="truncate text-sm font-semibold text-foreground">
                         {icon.title}
                       </span>
                       <code className="truncate text-[11px] leading-tight text-muted-foreground/70">
                         {icon.slug}
                       </code>
                     </span>
-
-                    {isBest && (
-                      <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent">
-                        Best match
-                      </span>
-                    )}
+                    <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-500">
+                      Exact match
+                    </span>
                   </button>
                 </li>
               )
             })
+          ) : match.related.length === 0 ? (
+            <p className="px-3 py-2.5 text-sm text-muted-foreground">
+              No related library results.
+            </p>
+          ) : (
+            <>
+              <li className="px-3 pt-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Related results
+              </li>
+              {match.related.map((icon, index) => {
+                const isHighlighted = index === highlighted
+                const isBest = index === 0
+
+                return (
+                  <li key={icon.slug}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isHighlighted}
+                      data-slug={icon.slug}
+                      onClick={() => choose(icon.slug)}
+                      onMouseEnter={() => setHighlighted(index)}
+                      className={`flex w-full items-center gap-3 rounded-md px-2.5 py-2.5 text-left transition-colors ${
+                        isHighlighted
+                          ? 'bg-accent/15 ring-1 ring-inset ring-accent/40'
+                          : 'hover:bg-accent/10'
+                      }`}
+                    >
+                      <TechIconTile slug={icon.slug} title={icon.title} />
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className={`truncate text-sm ${isBest ? 'font-semibold' : 'font-medium'}`}>
+                          {icon.title}
+                        </span>
+                        <code className="truncate text-[11px] leading-tight text-muted-foreground/70">
+                          {icon.slug}
+                        </code>
+                      </span>
+                      {isBest && (
+                        <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent">
+                          Suggestion
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+            </>
           )}
         </ul>
-      )}
       )}
     </div>
   )

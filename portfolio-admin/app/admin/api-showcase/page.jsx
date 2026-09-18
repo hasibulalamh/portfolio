@@ -152,6 +152,7 @@ export default function ApiShowcasePage() {
                   if (type === 'custom') setValue('icon_slug', null, { shouldDirty: true })
                 }}
                 label="Technology Logo"
+                uploadType="api-logo"
                 query={title || ''}
                 disabled={isSubmitting}
               />

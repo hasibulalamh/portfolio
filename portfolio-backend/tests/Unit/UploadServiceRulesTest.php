@@ -80,6 +80,23 @@ class UploadServiceRulesTest extends TestCase
         $this->assertSame('technology-logos', $rules['folder']);
     }
 
+    public function test_custom_technology_logo_types_use_dedicated_raster_folders(): void
+    {
+        $expectedFolders = [
+            UploadService::TYPE_SKILL_LOGO => 'skill-logos',
+            UploadService::TYPE_HERO_BADGE => 'hero-badges',
+            UploadService::TYPE_API_LOGO => 'api-logos',
+        ];
+
+        foreach ($expectedFolders as $type => $folder) {
+            $rules = UploadService::rulesFor($type);
+
+            $this->assertSame($folder, $rules['folder']);
+            $this->assertSame(['image/jpeg', 'image/png', 'image/webp'], $rules['mimetypes']);
+            $this->assertNotContains('image/svg+xml', $rules['mimetypes']);
+        }
+    }
+
     public function test_image_types_never_accept_a_pdf(): void
     {
         foreach ([

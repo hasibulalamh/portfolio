@@ -428,6 +428,7 @@ export default function HeroPage() {
                             setValue(`tech_badges.${index}.icon_slug`, null, { shouldDirty: true })
                           }
                         }}
+                        uploadType="hero-badge"
                         query={watch(`tech_badges.${index}.label`) || ''}
                         disabled={isSaving}
                       />

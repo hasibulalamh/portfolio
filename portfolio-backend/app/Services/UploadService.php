@@ -15,6 +15,9 @@ class UploadService
     public const TYPE_ABOUT_IMAGE = 'about-image';
     public const TYPE_PROJECT_IMAGE = 'project-image';
     public const TYPE_TECHNOLOGY_LOGO = 'technology-logo';
+    public const TYPE_SKILL_LOGO = 'skill-logo';
+    public const TYPE_HERO_BADGE = 'hero-badge';
+    public const TYPE_API_LOGO = 'api-logo';
     public const TYPE_AVATAR = 'avatar';
     public const TYPE_CV = 'cv';
     public const TYPE_GENERIC = 'generic';
@@ -41,6 +44,9 @@ class UploadService
             self::TYPE_ABOUT_IMAGE,
             self::TYPE_PROJECT_IMAGE,
             self::TYPE_TECHNOLOGY_LOGO,
+            self::TYPE_SKILL_LOGO,
+            self::TYPE_HERO_BADGE,
+            self::TYPE_API_LOGO,
             self::TYPE_AVATAR,
             self::TYPE_CV,
             self::TYPE_GENERIC,
@@ -85,6 +91,20 @@ class UploadService
                 'mimetypes' => self::IMAGE_MIMES,
                 'max_kb' => 5120,
                 'folder' => 'technology-logos',
+            ],
+            // Custom technology marks intentionally omit SVG. SVG is accepted
+            // by the legacy technology-logo upload, but these new content
+            // fields must not persist untrusted markup.
+            self::TYPE_SKILL_LOGO,
+            self::TYPE_HERO_BADGE,
+            self::TYPE_API_LOGO => [
+                'mimetypes' => ['image/jpeg', 'image/png', 'image/webp'],
+                'max_kb' => 5120,
+                'folder' => match ($type) {
+                    self::TYPE_SKILL_LOGO => 'skill-logos',
+                    self::TYPE_HERO_BADGE => 'hero-badges',
+                    self::TYPE_API_LOGO => 'api-logos',
+                },
             ],
             self::TYPE_AVATAR => [
                 'mimetypes' => self::IMAGE_MIMES,
