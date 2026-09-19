@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/admin/Skeleton'
 import { apiCall } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
-import { BarChart3, FileText, MessageSquare, Calendar } from 'lucide-react'
+import { BarChart3, FileText, MessageSquare, Calendar, AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react'
 
 const QUICK_ACTIONS = [
   { href: '/admin/settings', label: 'Update Site Settings' },
@@ -23,7 +23,9 @@ export default function DashboardPage() {
     messages: 0,
     meetings: 0,
   })
+  const [health, setHealth] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isHealthLoading, setIsHealthLoading] = useState(true)
 
   useEffect(() => {
     const loadStats = async () => {
@@ -66,6 +68,67 @@ export default function DashboardPage() {
     loadStats()
     // Runs once on mount; showToast is stable across renders.
   }, [showToast])
+
+  useEffect(() => {
+    const loadHealth = async () => {
+      try {
+        const result = await apiCall('GET', '/admin/health')
+        if (result.success) {
+          setHealth(result.data)
+        } else {
+          setHealth({ error: result.errorType || 'unknown' })
+        }
+      } catch (error) {
+        setHealth({ error: 'unknown' })
+        console.error('Failed to load health check:', error)
+      } finally {
+        setIsHealthLoading(false)
+      }
+    }
+
+    loadHealth()
+  }, [])
+
+  const getHealthStatusDisplay = () => {
+    if (isHealthLoading) {
+      return { message: 'Checking...', icon: null, color: 'text-gray-500' }
+    }
+
+    if (!health) {
+      return { message: 'Unable to check system health', icon: AlertCircle, color: 'text-red-600 dark:text-red-400' }
+    }
+
+    if (health.error) {
+      return { message: 'Unable to check system health', icon: AlertCircle, color: 'text-red-600 dark:text-red-400' }
+    }
+
+    const { status, checks } = health
+    let icon = CheckCircle2
+    let color = 'text-green-600 dark:text-green-400'
+    let message = 'All systems healthy'
+
+    if (status === 'down') {
+      icon = AlertCircle
+      color = 'text-red-600 dark:text-red-400'
+      if (checks.database.status === 'down') {
+        message = 'Database unreachable'
+      }
+    } else if (status === 'degraded') {
+      icon = AlertTriangle
+      color = 'text-yellow-600 dark:text-yellow-400'
+      if (checks.database.status === 'down') {
+        message = 'Database unreachable'
+      } else if (checks.storage.status === 'down') {
+        message = 'Storage unavailable'
+      } else if (checks.database.response_time_ms > 1000) {
+        message = 'Database slow'
+      } else if (checks.storage.response_time_ms > 1000) {
+        message = 'Storage slow'
+      }
+    }
+
+    return { message, icon, color }
+  }
 
   const statCards = [
     {
@@ -127,7 +190,7 @@ export default function DashboardPage() {
         })}
       </div>
 
-      <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="mt-12 grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="p-6">
           <h2 className="text-lg font-bold mb-4">Quick Actions</h2>
           <div className="space-y-3">
@@ -154,6 +217,33 @@ export default function DashboardPage() {
             <p>✓ Projects &amp; Case Studies</p>
             <p>✓ Testimonials &amp; Contact Info</p>
             <p>✓ Message &amp; Meeting Inboxes</p>
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <h2 className="text-lg font-bold mb-4">System Health</h2>
+          <div className="space-y-4">
+            {isHealthLoading ? (
+              <Skeleton className="h-6 w-full" />
+            ) : (
+              <>
+                {(() => {
+                  const { message, icon: StatusIcon, color } = getHealthStatusDisplay()
+                  return (
+                    <div className="flex items-center gap-2">
+                      {StatusIcon && <StatusIcon className={`w-5 h-5 ${color}`} aria-hidden="true" />}
+                      <span className={`text-sm font-medium ${color}`}>● {message}</span>
+                    </div>
+                  )
+                })()}
+                {health && !health.error && (
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p>DB: {health.checks.database.response_time_ms}ms</p>
+                    <p>Storage: {health.checks.storage.response_time_ms}ms</p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </Card>
       </div>

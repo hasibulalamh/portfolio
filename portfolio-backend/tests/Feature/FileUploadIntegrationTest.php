@@ -27,7 +27,11 @@ class FileUploadIntegrationTest extends TestCase
 
     public function test_a_valid_png_upload_returns_a_url(): void
     {
+        // Fake both disks: the .env has all R2 credentials present, so the
+        // upload service selects the r2 disk — faking only "public" made this
+        // test perform a real PutObject against Cloudflare R2.
         Storage::fake('public');
+        Storage::fake('r2');
         $this->actAsAdmin();
 
         $file = UploadedFile::fake()->image('photo.png', 200, 200);

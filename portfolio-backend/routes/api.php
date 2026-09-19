@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AboutController;
 use App\Http\Controllers\Admin\ApiShowcaseController;
 use App\Http\Controllers\Admin\ContactInfoController;
 use App\Http\Controllers\Admin\ContactMessageController;
+use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HeroController;
 use App\Http\Controllers\Admin\MeetingRequestController;
 use App\Http\Controllers\Admin\ProjectController;
@@ -165,4 +166,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
 
     // Generic file upload
     Route::post('/upload', [UploadController::class, 'store']);
+
+    // System health check — admin-only, no database access or logging.
+    Route::get('/health', [HealthController::class, 'index']);
 });
