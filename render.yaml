@@ -7,7 +7,7 @@
 # other half of that fix). Public, non-secret configuration belongs in the
 # repo, reviewable and restorable.
 #
-# BEFORE FIRST SYNC — read all three notes:
+# BEFORE FIRST SYNC — read all four notes:
 #
 # 1. Service name: Render adopts an existing dashboard service when the
 #    Blueprint's `name` matches it exactly; a mismatch CREATES a duplicate
@@ -24,6 +24,17 @@
 #    together with — or after — that code deploy, never before, or deploys
 #    will fail their health check against a route that does not exist yet.
 #
+# 4. Build context: this is a monorepo (portfolio-frontend, portfolio-admin,
+#    portfolio-backend all live under one repo root). Render's default build
+#    context is the repo root, but the Dockerfile's COPY steps assume the
+#    context IS portfolio-frontend/ (e.g. `COPY package.json ...` expects
+#    portfolio-frontend/package.json, not the repo root's). Without
+#    dockerContext pinned below, a sync that resets the service's root
+#    directory to the repo root makes the build pick up the wrong
+#    package.json and fail with "Missing script: build". dockerfilePath and
+#    dockerContext are independent settings — setting one does not imply the
+#    other.
+#
 # Validate locally with the Render CLI (v2.7.0+):
 #   render blueprint validate
 #
@@ -32,6 +43,7 @@ services:
     name: portfolio-frontend
     runtime: docker
     dockerfilePath: portfolio-frontend/Dockerfile
+    dockerContext: portfolio-frontend
     healthCheckPath: /api-health
     envVars:
       # Consumed at BUILD time — Next.js inlines it into the client bundle and
@@ -54,6 +66,7 @@ services:
 
 # Extending this Blueprint later: the admin (portfolio-admin) and backend
 # (portfolio-backend) services can be added as further `services:` entries in
-# the same name-adoption pattern — matching their dashboard names exactly and
+# the same name-adoption pattern — matching their dashboard names exactly,
+# setting their own dockerContext (portfolio-admin / portfolio-backend), and
 # declaring only non-secret env vars (NEXT_PUBLIC_API_URL for the admin; the
 # backend's secrets stay dashboard-side per note 2).
