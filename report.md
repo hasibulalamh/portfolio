@@ -4337,3 +4337,154 @@ The helpers.js module comment was updated to document this contract.
 - `tests/e2e/helpers.js`: comment-only update documenting the division of labor.
 - Test-infrastructure only — no application code, routes, or data-layer changes. Suite remains
   deterministic end-to-end: **16/16**.
+
+---
+
+# Production Observability & Deploy Config — 2026-09-19
+
+**Scope:** close out the production incident where the ISR homepage kept returning 200 while
+every settings fetch silently degraded to `FALLBACK_SETTINGS`. Four layers of defense plus the
+Render Blueprint that was missing entirely.
+
+## What shipped
+
+### 1. Structured fallback logging — `portfolio-frontend/lib/api.js`
+
+Every fallback path in `fetchFromApi()` (non-2xx, malformed envelope, thrown fetch error) now
+emits one greppable JSON line via the new `formatApiFallbackLog()`: `event: "api_fallback"`,
+the endpoint path, a classified `reason` (`http_<status>` / `network_error` /
+`unexpected_shape`), and — the field that diagnosed the original incident — `attempted_url`,
+which reveals a mispointed `NEXT_PUBLIC_API_URL` without redeploying first. Render's log drain
+(or any `grep api_fallback`) can alert on it. Upgraded from `console.warn` prose to
+`console.error` JSON so it survives log-based alerting.
+
+The base URL is now exported (`API_BASE_URL`), and `fetchFromApi`/`getSettings` accept a
+`revalidate` options passthrough so the health probe can bypass the Data Cache.
+
+### 2. Live health probe — `portfolio-frontend/app/api-health/route.js`
+
+`GET /api-health` reads `/settings` with `revalidate: 0` (force-dynamic, `no-store`), so it
+cannot share the cached entry the ISR page uses. Verdicts:
+
+- `200 {"status":"ok","source":"live"}` — settings fetch succeeded right now; echoes
+  `site_title` / `favicon_path` / `logo_path` and `settings_endpoint` + `latency_ms`.
+- `503 {"status":"degraded","source":"fallback"}` — fetch failed or returned nothing; `hint`
+  names the two usual suspects (API down, build-time env missing).
+
+`settings_endpoint` is reported in **both** verdicts, so a localhost-baked build is visible at
+a glance. A cached "degraded" verdict would outlive the recovery it reports — hence no caching.
+
+### 3. On-document truth — `app/layout.jsx` `generateMetadata()`
+
+Emits `other: { 'x-settings-source': 'live' | 'fallback' }`. For an ISR page the verdict is
+baked in at (re)build time, so `curl -s https://hasibulalam.com/ | grep x-settings-source`
+answers "is this HTML the API's data or the fallback?" on the document itself — same truth as
+`/api-health`, but visible for every cached render, not just fresh probes.
+
+### 4. Docker ARG bridge — both Next Dockerfiles
+
+Render exposes a Docker service's env vars to the build, but a build arg is invisible to `RUN`
+steps unless the Dockerfile re-declares it with `ARG` (scope is per-stage, so declared before
+the first stage **and** re-declared in the builder before `ENV`). Without it, `next build` ran
+with `NEXT_PUBLIC_API_URL` unset and inlined the localhost fallback — the incident itself.
+Unset args become empty strings, which are falsy in the `|| fallback` expressions, so a
+missing var degrades to the documented default rather than a broken URL. `NEXT_PUBLIC_*`
+values are public by definition; never pass real secrets as build args.
+
+### 5. Render Blueprint — `render.yaml` (new)
+
+Version-controlled, reviewable public config for the frontend service: name-adoption caveat
+(name must match the dashboard exactly or Render creates a duplicate service),
+`healthCheckPath: /api-health` (deploy only with/after the route ships), both `NEXT_PUBLIC_*`
+vars with the mandatory `/api` suffix called out. Secrets deliberately stay dashboard-managed.
+Deliberately omits plan/region/branch/autoDeploy so the dashboard remains source of truth.
+
+## Verification
+
+| # | Check | Result | Evidence |
+| - | ------------------------------------------------ | ---------- | ------------------------------- |
+| 1 | `formatApiFallbackLog` unit contract | 6/6 pass | `npx vitest run tests/unit/api-fallback-log.test.js` — valid single-line JSON, event tagging, `attempted_url`, all three reason classes |
+| 2 | `/api-health` live verdict | 200 ok/live | `settings_endpoint` correct, latency + brand fields echoed |
+| 3 | `/api-health` degraded verdict | 503 + correct hint | backend killed mid-verification; recovered instantly on restart (no stale cached verdict) |
+| 4 | `api_fallback` log fires in degraded mode | one JSON line | `reason: network_error`, `attempted_url` pointed at the dead API |
+| 5 | `x-settings-source` meta tag | renders `live` | `grep` on served homepage HTML; flips to `fallback` when API is down at (re)build time |
+| 6 | ARG bridge mechanism | MECHANISM_VERIFIED | scratch Dockerfile: `test "$NEXT_PUBLIC_API_URL" = "https://api.hasibulalam.com/api"` passed inside a `RUN` step |
+| 7 | `render.yaml` parses + contract fields | OK | parsed with `js-yaml`: name/runtime/dockerfilePath/healthCheckPath/envVars all as documented |
+| 8 | Full frontend Docker build | success | 22/22 steps incl. `npm ci` + `next build` inside the container (see finding b) |
+| 9 | Prod URL inlined into bundles | PASS | image grep: `api.hasibulalam.com` in 4 files of `.next/`; `localhost:8000` in **zero** (both `\|\| fallback` strings compiled out) |
+| 10 | Built image runtime smoke | 200 ok/live | standalone `node server.js` from the image; `/api-health` live verdict against the production API; `x-settings-source: live` baked at build time |
+| 11 | Plain bridge-network build + default-bridge runtime | 200 ok/live | `--no-cache` build without `--network=host` (`npm ci` 24s over docker0); image run on the default bridge, `/api-health` live against prod |
+
+Local services during checks 2–5: backend `:8000`, frontend `:3000` (dev), admin `:3001`
+(dev, compile-only sanity) — all 200.
+
+## Two environment findings from verification (worth recording)
+
+**a. `pkill -f` self-match.** Several verification commands silently died mid-run: a shell
+invoked as `bash -c '... pkill -f "next dev" ...'` matches its own pattern and kills itself.
+Use a bracket pattern (`pkill -f "[n]ext dev"`) — or any pattern that doesn't literally appear
+in the caller's command line — for `pkill`/`grep` in compound commands.
+
+**b. Full local Docker build of the frontend: four-act saga, now green end to end.**
+
+- **Act 1 — host memory exhaustion.** The first full build died at `npm ci` inside the
+  container with npm's "Exit handler never called!" — which exits **0**, so the half-empty
+  `node_modules` got cached and produced `sh: next: not found` at `npm run build`. Root cause
+  was host memory (7.6G RAM, ~450M free, swap 100% full during that run — npm install is
+  memory-hungry), consistent with an earlier `npm error ECOMPROMISED Lock compromised` from
+  the same box.
+- **Act 2 — containers hung mid-install; ufw was a red herring.** With memory freed, `npm ci`
+  hung at 0% CPU for 13 minutes: every registry fetch inside the container failed with
+  `ETIMEDOUT`. The **host** reached the registry fine, containers could not even raw-IP-ping
+  1.1.1.1, and a freshly created Docker network failed identically. Evidence at that point
+  implicated ufw (unit was enabled), and a `systemctl restart docker` changed nothing —
+  because **ufw was inactive in substance** (no rules loaded; the classic Docker↔ufw
+  collision was never real here). tcpdump told the actual story:
+- **Act 3 — root cause: the wifi router drops TTL<64.** tcpdump on `wlp1s0` showed container
+  requests leaving the box correctly masqueraded to `192.168.0.104` — and **zero replies**
+  coming back. A masqueraded forwarded packet differs from a locally-generated one on the
+  wire only in TTL (63 vs 64), and the discriminator confirmed it: host `ping -t 64` OK,
+  `-t 63` / `-t 62` / `-t 32` all FAIL. The router silently drops any packet whose TTL is
+  below 64 — an anti-tethering / no-NAT-hop filter that Docker forwarding trips by
+  definition. (It also explains the pre-existing `"mtu": 1400` in `daemon.json`: someone
+  had already fought this network's pathologies symptom by symptom.) Fix: one reversible
+  mangle rule — `iptables -t mangle -A POSTROUTING -o wlp1s0 -j TTL --ttl-set 64` — after
+  which host TTL=63 pings pass and containers regain full ICMP/DNS/HTTPS egress on every
+  Docker network type.
+- **Act 4 — plain bridge-network verification, no workarounds.** `--no-cache` build on the
+  default bridge: `npm ci` **24s** over docker0 (vs 13+ min hung), all 22 steps green,
+  `next build` running inside the container with the ENV bridge in effect. Bundle grep of
+  the image: production URL inlined in 4 files, localhost fallback in zero. The image then
+  booted on the **default bridge** (no `--network=host`): `/api-health` →
+  `200 {"status":"ok","source":"live"}` with `settings_endpoint` at
+  `https://api.hasibulalam.com/api/settings`, and the prerendered homepage carrying
+  `x-settings-source: live` (fetched from the production API during the container build).
+
+On Render none of these local obstacles exist — git checkout has no `node_modules`, builds run
+on Render's machines, and Render's network does not TTL-filter routed traffic. Local
+reproduction note: the TTL mangle rule is runtime-only — a reboot clears it and
+`iptables -t mangle -D POSTROUTING -o wlp1s0 -j TTL --ttl-set 64` removes it — so after a
+reboot local container egress breaks again until it is re-added. Hosts that need it
+permanently should save it via netfilter-persistent or an rc hook. The `mtu: 1400` in
+`daemon.json` could likely revert to default on networks that don't clamp MSS, but was left
+untouched as out of scope. Two corollaries:
+
+- **`.dockerignore` added to both Next apps** (excludes `node_modules`, `.next`). Without it,
+  `COPY . .` ships the host's 1.5G `node_modules` into the context — tens of thousands of
+  small files, per-build cost even where it works — and worse, overwrites the deps stage's
+  container-installed (musl) binaries with host (glibc) ones, which is exactly the
+  "Failed to load SWC binary for linux/x64" failure the first build hit. The deps stage's
+  `COPY --from=deps` makes ignoring `node_modules` safe.
+- **An `argtest:latest` image (193MB) from the previous session's scratch test is still on
+  this host.** Left alone deliberately since its provenance is outside this session; remove
+  with `docker rmi argtest` if unwanted.
+
+## Regression surface
+
+- `lib/api.js`: log line shape changed (prose → JSON); anything grep-ing for the old
+  `[api]` prefix should move to `api_fallback`. Fetch option passthrough is additive.
+- `layout.jsx`: one new meta name; no behavioral change for browsers.
+- Dockerfiles: additive ARG/ENV only; the standalone runner stages are untouched.
+- `render.yaml`: new file; not synced to any service yet (see header notes 1–3 before first sync).
+- `.dockerignore` files: new; make `COPY . .` strictly narrower — no path referenced by any
+  Dockerfile is excluded.

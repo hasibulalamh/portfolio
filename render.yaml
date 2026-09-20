@@ -1,0 +1,59 @@
+# Render Blueprint — version-controlled definition of the services behind
+# hasibulalam.com.
+#
+# Why this file exists: production silently rendered fallback settings because
+# NEXT_PUBLIC_API_URL lived only in the Render dashboard and never reached the
+# Docker build (the ARG/ENV bridge in portfolio-frontend/Dockerfile is the
+# other half of that fix). Public, non-secret configuration belongs in the
+# repo, reviewable and restorable.
+#
+# BEFORE FIRST SYNC — read all three notes:
+#
+# 1. Service name: Render adopts an existing dashboard service when the
+#    Blueprint's `name` matches it exactly; a mismatch CREATES a duplicate
+#    service instead. Confirm the frontend service's name in the dashboard
+#    matches `portfolio-frontend` before syncing.
+#
+# 2. Secrets stay out of this file on purpose. Everything declared here is
+#    public configuration (URLs the browser can see). Backend credentials —
+#    APP_KEY, DB_*, R2_*, MAIL_*, session keys — must remain dashboard-managed
+#    or in an envVarGroup, never committed.
+#
+# 3. Ordering: healthCheckPath points at /api-health, which ships with the
+#    observability changes (app/api-health/route.js). Sync this Blueprint
+#    together with — or after — that code deploy, never before, or deploys
+#    will fail their health check against a route that does not exist yet.
+#
+# Validate locally with the Render CLI (v2.7.0+):
+#   render blueprint validate
+#
+services:
+  - type: web
+    name: portfolio-frontend
+    runtime: docker
+    dockerfilePath: portfolio-frontend/Dockerfile
+    healthCheckPath: /api-health
+    envVars:
+      # Consumed at BUILD time — Next.js inlines it into the client bundle and
+      # the build-time prerender via the ARG/ENV bridge in the Dockerfile.
+      # The /api suffix is mandatory: https://api.hasibulalam.com/settings
+      # (without it) returns 404, which the frontend treats as "use fallback".
+      - key: NEXT_PUBLIC_API_URL
+        value: https://api.hasibulalam.com/api
+      # Drives metadataBase (canonical + Open Graph URLs) in app/layout.jsx.
+      # Without it, og:url and og:image are generated against
+      # http://localhost:3000.
+      - key: NEXT_PUBLIC_BASE_URL
+        value: https://hasibulalam.com
+
+    # Deliberately omitted, because Render retains the dashboard value for
+    # existing services and guessing wrong would change production behavior:
+    #   plan, region, branch, autoDeployTrigger, numInstances.
+    # Add a field here only when you want the repo to become its source of
+    # truth.
+
+# Extending this Blueprint later: the admin (portfolio-admin) and backend
+# (portfolio-backend) services can be added as further `services:` entries in
+# the same name-adoption pattern — matching their dashboard names exactly and
+# declaring only non-secret env vars (NEXT_PUBLIC_API_URL for the admin; the
+# backend's secrets stay dashboard-side per note 2).

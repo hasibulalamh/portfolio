@@ -1,0 +1,4 @@
+# Keep the build context small: node_modules is copied from the deps stage
+# (COPY --from=deps), and .next is produced by the build itself.
+node_modules
+.next

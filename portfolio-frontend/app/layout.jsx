@@ -84,6 +84,13 @@ const baseMetadata = {
 /**
  * Layer the admin-managed site title and favicon over the static defaults. If
  * the API is unreachable, getSettings() returns null and the defaults stand.
+ *
+ * `other['x-settings-source']` publishes whether the API actually answered for
+ * this render. For a static/ISR page the verdict is baked into the HTML at
+ * (re)build time, so `curl -s https://hasibulalam.com/ | grep x-settings-source`
+ * reveals a dead-API build instantly — the production incident where the page
+ * stayed 200 while silently serving fallback settings was invisible from the
+ * outside. Same truth as /api-health, but visible on the document itself.
  */
 export async function generateMetadata() {
   const settings = await getSettings()
@@ -99,6 +106,7 @@ export async function generateMetadata() {
     icons: settings?.favicon_path
       ? { icon: [{ url: settings.favicon_path }] }
       : baseMetadata.icons,
+    other: { 'x-settings-source': settings ? 'live' : 'fallback' },
   }
 }
 

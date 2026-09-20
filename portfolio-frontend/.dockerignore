@@ -1,0 +1,5 @@
+# Keep the build context small: node_modules is copied from the deps stage
+# (COPY --from=deps), and .next is produced by the build itself. Shipping both
+# through the context made `COPY . .` transfer ~1.5 GB of small files per build.
+node_modules
+.next
