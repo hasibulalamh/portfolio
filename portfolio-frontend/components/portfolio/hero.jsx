@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { ArrowRight, Download } from 'lucide-react'
 import { SocialIcon } from './social-icons'
 import { usableSocialLinks } from '@/lib/social-platforms'
+import { trackEvent } from '@/lib/track'
 import { TechIcon } from './tech-icon'
 
 function useTypewriter(words) {
@@ -40,6 +41,29 @@ function useTypewriter(words) {
   }, [text, deleting, index, words])
 
   return text
+}
+
+/**
+ * The tracked event type for a social link click.
+ *
+ * Only conversion-intent platforms get an event: GitHub, LinkedIn and email.
+ * The other platforms the admin can pick (Facebook, X, Instagram, YouTube,
+ * WhatsApp-as-a-social-link, Telegram, website) have no event type in the
+ * backend's allow-list, so they resolve to null and trackEvent ignores them.
+ * The Contact section's dedicated WhatsApp card is the whatsapp_click source,
+ * not this social row.
+ */
+function socialEventFor(platform) {
+  switch (platform) {
+    case 'github':
+      return 'github_click'
+    case 'linkedin':
+      return 'linkedin_click'
+    case 'email':
+      return 'email_click'
+    default:
+      return null
+  }
 }
 
 function Particles() {
@@ -354,6 +378,7 @@ export function Hero({ hero = {} }) {
                 download
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => trackEvent('cv_download')}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-accent/30 bg-accent/5 px-6 py-3 font-semibold text-accent transition-all duration-300 hover:border-accent hover:bg-accent/10 sm:w-auto"
                 title="Download CV/Resume"
               >
@@ -378,6 +403,7 @@ export function Hero({ hero = {} }) {
                 aria-label={label}
                 data-testid="hero-social-link"
                 data-platform={platform}
+                onClick={() => trackEvent(socialEventFor(platform))}
                 className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground transition-all duration-300 hover:-translate-y-1 hover:border-accent hover:text-accent"
               >
                 <SocialIcon platform={platform} className="h-5 w-5" />

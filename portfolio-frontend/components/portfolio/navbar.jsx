@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { resolveLogo } from '@/lib/logo'
+import { trackEvent } from '@/lib/track'
 import { TextLogo } from './text-logo'
 
 export function Navbar({ navItems = [], settings = {} }) {
@@ -137,6 +138,7 @@ export function Navbar({ navItems = [], settings = {} }) {
           {contactLink && (
             <a
               href={contactLink.href}
+              onClick={() => trackEvent('hire_me_click')}
               className="hidden rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-all duration-300 hover:glow-primary hover:brightness-110 md:inline-flex"
             >
               Hire Me
@@ -177,7 +179,10 @@ export function Navbar({ navItems = [], settings = {} }) {
               <li>
                 <a
                   href={contactLink.href}
-                  onClick={() => setMenuOpen(false)}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    trackEvent('hire_me_click')
+                  }}
                   className="mt-2 block rounded-lg bg-primary px-4 py-3 text-center text-sm font-semibold text-primary-foreground"
                 >
                   Hire Me

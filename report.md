@@ -4488,3 +4488,199 @@ untouched as out of scope. Two corollaries:
 - `render.yaml`: new file; not synced to any service yet (see header notes 1–3 before first sync).
 - `.dockerignore` files: new; make `COPY . .` strictly narrower — no path referenced by any
   Dockerfile is excluded.
+
+---
+
+# Part D — Scoped Click Tracking (Conversions) Implementation & Verification
+
+**Date:** 2026-09-22  
+**Scope:** Aggregate-only CTA click tracking for the public portfolio — a public
+`POST /api/track` endpoint, an admin `GET /api/admin/conversions` aggregate read, a
+Conversions card on the admin dashboard, and fire-and-forget instrumentation of the
+public CTAs. No per-visitor identity, no IP storage, no session tracking, no user
+agent. Nothing outside the scope touched: Site Settings, Content Management, the auth
+flow and the health check feature are unmodified.
+
+---
+
+## Implementation Summary
+
+### Conventions inspected first (and followed)
+
+- **Migrations**: `YYYY_MM_DD_HHMMSS_snake_case_name.php`, anonymous `Migration`
+  classes with explanatory docblocks.
+- **Public routes**: declared top-level in `routes/api.php`; unauthenticated writes are
+  wrapped in a `throttle` middleware (the contact/meeting forms use `throttle:10,1`).
+- **Admin routes**: `Route::middleware('auth:sanctum')->prefix('admin')` group; responses
+  shaped through the shared `ApiResponse` envelope (`data` / `message` / `errors`).
+- **Models**: Laravel 11+ `protected function casts()` style.
+
+### Backend (portfolio-backend)
+
+**New files:**
+
+- `database/migrations/2026_09_21_120000_create_click_events_table.php` — `id`,
+  `event_type` string(50) **indexed** (the only read this table serves is a group-by
+  over it), `created_at` nullable timestamp. Deliberately **no** `updated_at`, **no**
+  soft deletes, no IP/UA/session columns. `down()` drops the table.
+- `app/Models/ClickEvent.php` — `$timestamps = false` with `created_at` set explicitly
+  by the service (a click is an immutable fact, never edited — matches the schema).
+  Written exclusively through the service; no relationships/scopes.
+- `app/Services/ClickTrackingService.php` — fixed allow-list
+  `hire_me_click, email_click, whatsapp_click, cv_download, github_click,
+  linkedin_click, contact_form_submit`. `record(string $eventType): void` silently
+  drops anything outside the list (arbitrary strings can never become rows).
+  `getAggregateCounts(): array` runs **one** grouped query feeding both the total and
+  the by-type map (a separate `COUNT(*)` could disagree with the group-by under a
+  racing write), and returns a zero baseline for every allow-listed type so the admin
+  card renders a stable list.
+- `app/Http/Controllers/ClickTrackingController.php` — `POST /api/track`: validates
+  `event_type` as `required|string|in:<allow-list>`, records, returns **204 No
+  Content**; anything unlisted → **422** (the service's silent-drop stays as
+  defense-in-depth behind the validator).
+- `app/Http/Controllers/Admin/ConversionsController.php` — `GET /api/admin/conversions`:
+  `{ total, by_type, period: "all_time" }` through `ApiResponse::success`, matching the
+  HealthController pattern.
+- `tests/Feature/ClickTrackingTest.php` — 11 tests (see test matrix below).
+
+**Routes added (`routes/api.php`):**
+
+```php
+// public — anonymous visitors, throttled 30/min per IP
+Route::post('/track', [ClickTrackingController::class, 'store'])
+    ->middleware('throttle:30,1');
+
+// inside Route::middleware('auth:sanctum')->prefix('admin')
+Route::get('/conversions', [ConversionsController::class, 'index']);
+```
+
+### Public frontend (portfolio-frontend)
+
+- `lib/track.js` — `trackEvent(eventType)`: fire-and-forget `POST
+  ${NEXT_PUBLIC_API_URL}/track` with `keepalive: true` (so a CV download or external
+  navigation cannot tear the request down mid-flight), try/catch plus `.catch()` around
+  the promise, errors swallowed with a dev-only `console.warn`. Client allow-list
+  mirrors the backend's; unknown types are ignored client-side.
+- `components/portfolio/navbar.jsx` — desktop + mobile "Hire Me" → `hire_me_click`.
+- `components/portfolio/hero.jsx` — CV download → `cv_download`; social row maps
+  `github → github_click`, `linkedin → linkedin_click`, `email → email_click` (other
+  platforms → `null` → not tracked).
+- `components/portfolio/contact.jsx` — mailto card → `email_click`; WhatsApp card →
+  `whatsapp_click`; contact form submit (counted at intent, before the server's
+  verdict) → `contact_form_submit`; social row same mapping as Hero.
+- Internal anchor navigation (`#about`, `#contact` section jumps, nav links, Hero's
+  admin-configured CTA anchors) is **not** tracked; default navigation/mailto/download
+  behavior never prevented.
+
+### Admin panel (portfolio-admin)
+
+- `app/admin/dashboard/page.jsx` — new **Conversions** card below the stat cards,
+  mirroring the System Health card pattern: `apiCall('GET', '/admin/conversions')`,
+  dedicated loading flag + `Skeleton`, red error state on failure. Prominent total,
+  then one bar row per event type sorted strongest-first (stable sort), bar width
+  scaled against the **largest** count (not the total) with a 2% floor for nonzero
+  rows, and each nonzero row annotated with its exact % share of total. Unknown event
+  types from the backend fall back to their raw string so a future type still renders.
+- `tests/unit/dashboard-conversions.test.jsx` — 6 vitest component tests.
+
+### E2E
+
+- `tests/e2e/conversions-dashboard-journey.spec.js` — two-test Playwright journey
+  (card render + a real public CTA click raising the dashboard total by exactly one).
+  Results below.
+
+### Cleanup
+
+- Deleted `debug-dashboard.tmp.cjs` — a temp debug script at the repo root that
+  contained **plaintext admin credentials** and whose own header said it is deleted
+  after use.
+- Added the missing `"test": "vitest run"` script to `portfolio-frontend/package.json`
+  (the suite existed but had no script entry).
+
+---
+
+## Verification Results (local, pre-deploy)
+
+### PHPUnit
+
+| Run | Result |
+| --- | --- |
+| New `ClickTrackingTest` alone | **11 passed (46 assertions)** |
+| **Full suite, single sequential process** (`php artisan test`, ~16 min, no parallel/background runs) | **366 passed, 1298 assertions, 0 failures/skips** — 355 pre-existing + 11 new |
+
+The new tests pin, among others: valid type → 204 + one row; unlisted type → 422 + **no**
+row; missing/non-string type → 422; endpoint reachable **without** any auth; the route
+carries `throttle:30,1` and **not** `auth:sanctum` (structural rate-limit check, per
+spec — the limit is not exhausted at runtime); `GET /api/admin/conversions` → 401
+anonymous, correct aggregates (`total`, zero-baselined `by_type`, `period`) when
+authenticated; and a schema guard asserting `click_events` has `created_at` and never
+gets an `updated_at` column.
+
+### Frontend unit suites
+
+| Suite | Result |
+| --- | --- |
+| `portfolio-admin` (vitest) | **58 passed (4 files)** — includes 6 new Conversions-card tests |
+| `portfolio-frontend` (vitest) | **85 passed (5 files)** |
+
+### Manual curl — live backend
+
+```
+POST /api/track  {"event_type":"hire_me_click"}      → HTTP 204
+POST /api/track  {"event_type":"arbitrary_string"}   → HTTP 422 + envelope error
+GET  /api/admin/conversions  (no auth)               → HTTP 401
+```
+
+### Assumptions where conventions weren't obvious
+
+1. **Timestamps**: chose `$timestamps = false` + explicit `created_at` — consistent with
+   the write-once, never-edited schema (no `updated_at` column to maintain).
+2. **422 vs silent ignore**: the service ignores unlisted types silently as
+   defense-in-depth, but the controller validates first so the public endpoint answers
+   422, as the endpoint spec requires.
+3. **Hire Me** is an internal `#contact` jump but is tracked — the task lists it
+   explicitly as a CTA. Hero's admin-configured primary/secondary CTA anchors stay
+   untracked (their targets are admin-chosen and may be internal anchors).
+4. **WhatsApp-as-a-social-row** is not tracked; only the Contact section's dedicated
+   WhatsApp card maps to `whatsapp_click` — consistent across Hero and Contact.
+5. **Rate limiting** asserted structurally (middleware attached to the route), not by
+   exhausting 30 requests/min.
+6. Test DB (`portfolio_backend_test`) is wiped per run by `RefreshDatabase`; the dev DB
+   `click_events` table holds only legitimate local test rows (6 at time of writing —
+   one inserted by this session's curl check).
+
+**Status: implemented and verified locally. Not deployed.**
+
+### E2E journey — Playwright (`tests/e2e/conversions-dashboard-journey.spec.js`)
+
+**Environment:** backend `php artisan serve` on `:8000` against the remote Aiven MySQL;
+public frontend on `:3000` and admin on `:3001` (Playwright `reuseExistingServer` picked
+up the already-running dev servers). Both Next apps point at `http://127.0.0.1:8000/api`,
+so the run was fully local — only the `click_events` table was written.
+
+| Run | Result | Cause |
+| --- | --- | --- |
+| 1 | **2 skipped** | Spec guard: `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars not set — correct behavior, credentials required by design |
+| 2 | **2 failed** (60s test timeout, card stuck on loading skeleton, no error state) | Backend was a **single** PHP process: it serialized the dashboard's 7 concurrent API fetches while the remote MySQL took 8–30s per request; the conversions fetch never landed inside the test's 60s timeout |
+| 3 | **2 passed (3.7m)** | `PHP_CLI_SERVER_WORKERS=8` (concurrent workers) + `--timeout=240000 --retries=1` |
+
+Final-run detail:
+
+- **"the Conversions card renders aggregate bars for an admin" — PASS (1.2m):** heading
+  visible, all 7 `conversion-row` entries render (zero baseline included), bar widths
+  non-increasing down the list, share text present exactly on nonzero rows.
+- **"a real CTA click lands in the dashboard Conversions card" — PASS (2.4m):** read the
+  dashboard total → clicked the public navbar "Hire Me" CTA → reload → total increased by
+  **exactly one**. Corroborated in the DB: `click_events` went 6 → 7 rows, newest row
+  `hire_me_click`.
+
+**Notes:**
+
+- **No code change was required for the e2e pass** — the two earlier runs were purely
+  environmental (missing credentials env vars; single-worker `php artisan serve`
+  serializing concurrent dashboard fetches against a very slow remote DB, exactly the
+  hazard the spec's header comment warns about). The feature code, card and spec worked
+  as written once the server could serve requests concurrently.
+- The dev DB's `click_events` now holds 7 legitimate local test rows (1 curl probe + 1
+  e2e click from this session, 5 from earlier work). The test DB remains wiped per run.
+- Backend server stopped after the run; port 8000 released.

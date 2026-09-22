@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AboutController;
 use App\Http\Controllers\Admin\ApiShowcaseController;
 use App\Http\Controllers\Admin\ContactInfoController;
 use App\Http\Controllers\Admin\ContactMessageController;
+use App\Http\Controllers\Admin\ConversionsController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HeroController;
 use App\Http\Controllers\Admin\MeetingRequestController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\Admin\TestimonialController;
 use App\Http\Controllers\Admin\TimelineItemController;
 use App\Http\Controllers\Admin\UploadController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ClickTrackingController;
 use App\Http\Controllers\PublicController;
 use Illuminate\Support\Facades\Route;
 
@@ -68,6 +70,14 @@ Route::middleware('throttle:10,1')->group(function () {
     Route::post('/contact-messages', [PublicController::class, 'storeContactMessage']);
     Route::post('/meeting-requests', [PublicController::class, 'storeMeetingRequest']);
 });
+
+// CTA click tracking. Unauthenticated by design — the caller is an anonymous
+// visitor — and throttled harder than the forms because every page view can
+// fire it and there is nothing a client legitimately needs thirty times a
+// minute. Accepts only a fixed allow-list of event types; anything else is a
+// 422, never a row.
+Route::post('/track', [ClickTrackingController::class, 'store'])
+    ->middleware('throttle:30,1');
 
 // ---------------------------------------------------------------------------
 // Admin — every route below requires a valid Sanctum token
@@ -169,4 +179,7 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
 
     // System health check — admin-only, no database access or logging.
     Route::get('/health', [HealthController::class, 'index']);
+
+    // Aggregate CTA click counts — admin-only read over the click_events table.
+    Route::get('/conversions', [ConversionsController::class, 'index']);
 });

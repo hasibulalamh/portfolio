@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/admin/Skeleton'
 import { apiCall } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
-import { BarChart3, FileText, MessageSquare, Calendar, AlertCircle, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { BarChart3, FileText, MessageSquare, Calendar, AlertCircle, CheckCircle2, AlertTriangle, Target } from 'lucide-react'
 
 const QUICK_ACTIONS = [
   { href: '/admin/settings', label: 'Update Site Settings' },
@@ -14,6 +14,19 @@ const QUICK_ACTIONS = [
   { href: '/admin/projects', label: 'Manage Projects' },
   { href: '/admin/testimonials', label: 'Add Testimonials' },
 ]
+
+// Labels for the tracked event types, keyed by the backend's allow-list values.
+// Any key not listed here falls back to its raw value, so a type added on the
+// backend later still renders instead of vanishing.
+const CONVERSION_LABELS = {
+  hire_me_click: 'Hire Me clicks',
+  email_click: 'Email clicks',
+  whatsapp_click: 'WhatsApp clicks',
+  cv_download: 'CV downloads',
+  github_click: 'GitHub clicks',
+  linkedin_click: 'LinkedIn clicks',
+  contact_form_submit: 'Contact form submissions',
+}
 
 export default function DashboardPage() {
   const { showToast } = useToast()
@@ -24,8 +37,10 @@ export default function DashboardPage() {
     meetings: 0,
   })
   const [health, setHealth] = useState(null)
+  const [conversions, setConversions] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isHealthLoading, setIsHealthLoading] = useState(true)
+  const [isConversionsLoading, setIsConversionsLoading] = useState(true)
 
   useEffect(() => {
     const loadStats = async () => {
@@ -88,6 +103,61 @@ export default function DashboardPage() {
 
     loadHealth()
   }, [])
+
+  useEffect(() => {
+    const loadConversions = async () => {
+      try {
+        const result = await apiCall('GET', '/admin/conversions')
+        if (result.success) {
+          setConversions(result.data)
+        } else {
+          setConversions({ error: result.errorType || 'unknown' })
+        }
+      } catch (error) {
+        setConversions({ error: 'unknown' })
+        console.error('Failed to load conversions:', error)
+      } finally {
+        setIsConversionsLoading(false)
+      }
+    }
+
+    loadConversions()
+  }, [])
+
+  // Rows for the Conversions card. Bar length is scaled against the largest
+  // count — not the total — so one dominant type doesn't flatten every other
+  // bar into invisibility; the exact share of the total travels alongside as
+  // text instead. Bars are sorted strongest-first; the sort is stable, so
+  // equal counts keep the backend's allow-list order.
+  const conversionEntries = conversions && !conversions.error && conversions.by_type
+    ? Object.entries(conversions.by_type)
+    : []
+  const conversionTotal = conversions && !conversions.error
+    ? conversions.total ?? 0
+    : 0
+  const maxConversionCount = Math.max(0, ...conversionEntries.map(([, count]) => count))
+
+  const conversionRows = conversionEntries
+    .map(([type, count]) => ({
+      type,
+      count,
+      label: CONVERSION_LABELS[type] ?? type,
+      // Share of total, but only for rows that have clicks: a 0/0 division on
+      // a fresh install would render NaN, and "0% of total" next to a zero
+      // count is noise — the row already says 0.
+      share:
+        conversionTotal > 0 && count > 0
+          ? Math.round((count / conversionTotal) * 100)
+          : null,
+      // 2% floor for any nonzero count keeps a single click visible next to
+      // hundreds; zero-count bars collapse to nothing, which is the honest
+      // rendering of zero.
+      width:
+        maxConversionCount > 0 && count > 0
+          ? Math.max(2, Math.round((count / maxConversionCount) * 1000) / 10)
+          : 0,
+    }))
+    .sort((a, b) => b.count - a.count)
 
   const getHealthStatusDisplay = () => {
     if (isHealthLoading) {
@@ -245,6 +315,67 @@ export default function DashboardPage() {
               </>
             )}
           </div>
+        </Card>
+      </div>
+
+      {/* Conversions — aggregate CTA click counts. All-time only: the tracking
+          feature records no period dimension, so there is no range to pick. */}
+      <div className="mt-6">
+        <Card className="p-6" data-testid="conversions-card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold">Conversions</h2>
+            <Target className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+          </div>
+          {isConversionsLoading ? (
+            <Skeleton className="h-8 w-24" />
+          ) : !conversions || conversions.error ? (
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" aria-hidden="true" />
+              <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                Unable to load conversion counts
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-2">
+                <p className="text-3xl font-bold">{conversions.total ?? 0}</p>
+                <span className="text-sm text-muted-foreground">
+                  total clicks ({conversions.period === 'all_time' ? 'all time' : conversions.period})
+                </span>
+              </div>
+              {conversionRows.length > 0 && (
+                <ul className="mt-4 space-y-3 text-sm">
+                  {conversionRows.map((row) => (
+                    <li key={row.type} data-testid="conversion-row" data-event-type={row.type}>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-muted-foreground">{row.label}</span>
+                        <span className="font-medium tabular-nums">
+                          {row.count}
+                          {row.share !== null && (
+                            <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                              {row.share}% of total
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      {/* Decorative: the numbers above carry the data, so the
+                          bar is hidden from the accessibility tree. */}
+                      <div
+                        className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                        aria-hidden="true"
+                      >
+                        <div
+                          data-testid="conversion-bar"
+                          className="h-full rounded-full bg-primary transition-[width] duration-500"
+                          style={{ width: `${row.width}%` }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
         </Card>
       </div>
     </div>

@@ -5,10 +5,31 @@ import { Mail, MapPin, Send, CircleCheck, MessageCircle, Phone } from 'lucide-re
 import { Reveal, SectionHeading } from './reveal'
 import { SocialIcon } from './social-icons'
 import { usableSocialLinks } from '@/lib/social-platforms'
+import { trackEvent } from '@/lib/track'
 
 const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 ).replace(/\/$/, '')
+
+/**
+ * Tracked event type for a social link click — GitHub, LinkedIn and email
+ * only, matching the backend's allow-list. Other platforms resolve to null
+ * and trackEvent ignores them. Keep in sync with hero.jsx's copy of the
+ * mapping (both files need the same three names, and neither is a shared
+ * module today).
+ */
+function socialEventFor(platform) {
+  switch (platform) {
+    case 'github':
+      return 'github_click'
+    case 'linkedin':
+      return 'linkedin_click'
+    case 'email':
+      return 'email_click'
+    default:
+      return null
+  }
+}
 
 /**
  * Contact and meeting-request forms.
@@ -92,6 +113,10 @@ export function Contact({ hero = {}, contactInfo = {} }) {
     const form = e.currentTarget
     const data = new FormData(form)
 
+    // Count the attempt, not the server's verdict: the visitor's intent — the
+    // thing being measured — happened the moment they hit Send.
+    trackEvent('contact_form_submit')
+
     await submit(
       '/contact-messages',
       {
@@ -155,6 +180,7 @@ export function Contact({ hero = {}, contactInfo = {} }) {
                 {email && (
                   <a
                     href={`mailto:${email}`}
+                    onClick={() => trackEvent('email_click')}
                     className="group flex items-center gap-4 rounded-xl border border-border bg-secondary p-4 transition-colors hover:border-accent"
                   >
                     <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/15 text-accent">
@@ -188,6 +214,7 @@ export function Contact({ hero = {}, contactInfo = {} }) {
                     href={`https://wa.me/${whatsappNumber}`}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => trackEvent('whatsapp_click')}
                     className="group flex items-center gap-4 rounded-xl border border-border bg-secondary p-4 transition-colors hover:border-accent"
                   >
                     <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
@@ -224,6 +251,7 @@ export function Contact({ hero = {}, contactInfo = {} }) {
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label={label}
+                      onClick={() => trackEvent(socialEventFor(platform))}
                       className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground transition-all duration-300 hover:-translate-y-1 hover:border-accent hover:text-accent"
                     >
                       <SocialIcon platform={platform} className="h-5 w-5" />
