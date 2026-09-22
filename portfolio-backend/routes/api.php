@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\ConversionsController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HeroController;
 use App\Http\Controllers\Admin\MeetingRequestController;
+use App\Http\Controllers\Admin\OrphanFileController;
 use App\Http\Controllers\Admin\ProjectController;
 use App\Http\Controllers\Admin\SectionVisibilityController;
 use App\Http\Controllers\Admin\SettingController;
@@ -182,4 +183,9 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
 
     // Aggregate CTA click counts — admin-only read over the click_events table.
     Route::get('/conversions', [ConversionsController::class, 'index']);
+
+    // Storage hygiene — scan for unreferenced uploads; deletion requires an
+    // explicit path list and re-verifies each path server-side before removal.
+    Route::get('/storage/orphans', [OrphanFileController::class, 'index']);
+    Route::delete('/storage/orphans', [OrphanFileController::class, 'destroy']);
 });

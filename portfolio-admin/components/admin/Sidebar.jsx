@@ -5,7 +5,7 @@ import Link from 'next/link'
 // uses for the Hero Section menu item.
 import NextImage from 'next/image'
 import { usePathname } from 'next/navigation'
-import { Menu, X, Settings, Layout, Image, Users, Clock, Zap, MessageSquare, Mail, Palette, ChevronDown } from 'lucide-react'
+import { Menu, X, Settings, Layout, Image, Users, Clock, Zap, MessageSquare, Mail, Palette, ChevronDown, HardDrive } from 'lucide-react'
 import { useState } from 'react'
 import { useSettings } from '@/lib/settings'
 import { resolveLogo } from '@/lib/logo'
@@ -37,6 +37,7 @@ const menuItems = [
       { label: 'Meeting Requests', href: '/admin/meeting-requests' },
     ],
   },
+  { label: 'Storage Orphans', href: '/admin/storage/orphans', icon: HardDrive },
 ]
 
 export function Sidebar({ isOpen, onToggle }) {

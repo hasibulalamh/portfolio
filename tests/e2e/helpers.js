@@ -148,15 +148,17 @@ async function loginAdmin(page, adminUrl, email, password) {
   // Navigate to the dashboard — the admin layout will see the token and stay
   await page.goto(`${adminUrl}/admin/dashboard`, {
     waitUntil: 'domcontentloaded',
-    timeout: 15000,
+    // 15s flaked on loaded machines: the admin server shares the box with
+    // several other processes and domcontentloaded itself can stall.
+    timeout: 60_000,
   });
   // Wait for the admin shell to render (sidebar + header)
   // The layout calls GET /admin/me to verify the session — wait for it
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
   // Wait for the "Loading..." spinner to disappear (layout auth check)
   await page
     .locator('text=Loading...')
-    .waitFor({ state: 'detached', timeout: 10000 })
+    .waitFor({ state: 'detached', timeout: 30_000 })
     .catch(() => {});
   // Small extra delay for Next.js client-side rendering
   await page.waitForTimeout(500);

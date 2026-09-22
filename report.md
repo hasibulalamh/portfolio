@@ -4684,3 +4684,216 @@ Final-run detail:
 - The dev DB's `click_events` now holds 7 legitimate local test rows (1 curl probe + 1
   e2e click from this session, 5 from earlier work). The test DB remains wiped per run.
 - Backend server stopped after the run; port 8000 released.
+
+---
+
+# Part E — Admin Orphan R2 File Detector Implementation & Verification
+
+**Date:** 2026-09-23  
+**Scope:** Read-only scan for uploaded storage files no model references any more, plus
+deletion that requires explicit admin selection and confirmation. **Nothing is ever
+auto-deleted**; every delete re-verifies its path against a freshly built reference set
+immediately before removal. Site Settings, Content Management, the auth flow, the health
+check and the click-tracking features are untouched.
+
+---
+
+## Step 1 — Model/column inventory (the correctness factor)
+
+Derived from `database/migrations/` (every `*_path`/`*_url`/`*_logo`/`*_image`/`*_avatar`
+/`*_cv`/`*_favicon`/`*_file` column plus every `json()` column), cross-checked against
+the models and against `SingletonResetService::PATH_COLUMNS`:
+
+| # | Model | Column | Shape | Stored as |
+| --- | --- | --- | --- | --- |
+| 1 | `Setting` | `favicon_path` | single | full public URL |
+| 2 | `Setting` | `logo_path` | single | full public URL |
+| 3 | `Hero` | `image_path` | single | full public URL |
+| 4 | `Hero` | `cv_path` | single | full public URL |
+| 5 | `About` | `image_path` | single | full public URL |
+| 6 | `Project` | `image_path` | single | full public URL |
+| 7 | `ProjectDetail` | `document_path` | single | full public URL |
+| 8 | `Testimonial` | `avatar_path` | single | full public URL |
+| 9 | `Skill` | `logo_url` | single | full public URL |
+| 10 | `ApiShowcase` | `logo_url` | single | full public URL |
+| 11 | `ProjectDetail` | `gallery_images` (json) | array of URL strings | full public URLs |
+| 12 | `Hero` | `tech_badges` (json) | array of objects, nested `logo_url` | full public URLs |
+
+Deliberately excluded: `Hero.social_links[].url` (external profile links, not uploads),
+every `*_alt`/`logo_type`/`logo_text` column (alt text / wordmark config), and the json
+columns holding non-file content (`tags`, `roles`, `endpoints`, `stats`, `results`).
+The remaining models (`ContactInfo`, `ContactMessage`, `MeetingRequest`,
+`TimelineItem`, `SectionVisibility`, `SkillCategory`, `ClickEvent`, `User`) have no
+file-path columns at all.
+
+**Post-implementation re-check (per task):** re-scanned all migrations a second time
+after implementation, this time explicitly enumerating every `json()` column — nothing
+was missed.
+
+**Flagged for human review (pre-existing, not modified here):**
+
+1. `SingletonResetService::PATH_COLUMNS` predates rows 9–10 — a hero/settings reset
+   will not scan `Skill.logo_url` / `ApiShowcase.logo_url`, and it never scanned the
+   nested `tech_badges[].logo_url` (row 12). My service's map includes all of them.
+2. Nested JSON collection is intentionally narrow: inside objects only values under
+   `url` / `*_path` / `*_url` keys count. Collecting every string would sweep
+   `tech_badges[].label` text into the reference set.
+
+Key environment facts the implementation leans on: R2 is the S3 driver with path-style
+addressing and public base `R2_URL`; `UploadService` names files `{folder}/{uuid}.{ext}`
+and the admin forms persist the **absolute public URL**, so matching normalises stored
+URLs down to disk paths; `UploadService::disk()` falls back to the local `public` disk
+when R2 credentials are absent — the orphan service scans exactly the disk uploads go
+to. Storage values that do not normalise (external URLs) return null and contribute
+nothing, so a foreign link can never shadow a disk object.
+
+---
+
+## Implementation Summary
+
+### Backend (portfolio-backend)
+
+- `app/Services/OrphanFileService.php` — `listR2Files()` (Flysystem generator listing;
+  the S3 adapter pages the bucket internally at 1000 keys/request, so large buckets
+  come back complete; emits `path`/`size`/`last_modified`), `collectReferencedPaths()`
+  (flat de-duplicated set over the 12-column inventory above), `findOrphans()` (R2
+  minus referenced, excluding anything with `last_modified` inside the **15-minute**
+  upload grace period), and `deleteFiles()` (per-path re-check against a fresh
+  reference set → containment check against UploadService's own folders → exists →
+  delete; any single failure is reported per file and never aborts the batch).
+- `app/Http/Controllers/Admin/OrphanFileController.php` — `GET` returns
+  `{ total_r2_files, referenced_files, orphan_candidates }`; `DELETE` validates
+  `paths` as a non-empty array of distinct non-empty strings and returns
+  `{ deleted: [...], skipped: [{path, reason}, ...] }` with reasons such as
+  `now referenced`, `outside upload folders`, `not found on disk`, `delete failed: …`.
+- Routes (inside the existing `auth:sanctum` admin group, same as every other admin
+  endpoint): `GET /api/admin/storage/orphans`, `DELETE /api/admin/storage/orphans`.
+- `tests/Feature/OrphanFileTest.php` — 13 feature tests, all against
+  `Storage::fake('r2')` (the local `.env` holds real R2 credentials, so faking both
+  disks is mandatory; established by `FileUploadIntegrationTest`).
+
+### Admin panel (portfolio-admin)
+
+- `app/admin/storage/orphans/page.jsx` — summary strip (files on storage / referenced /
+  candidates, mirroring the dashboard stat-card pattern), the app's first semantic
+  `<table>` (checkbox | file | size | last modified), human-readable sizes and
+  `Intl.RelativeTimeFormat` dates, select-all/individual checkboxes, `Delete Selected`
+  disabled until ≥1 row is checked, `AlertDialog` confirmation (Singleton Reset
+  pattern) naming the exact files with the cannot-be-undone warning, refetch after
+  delete, toast summarising deleted vs skipped, loading/empty/error states consistent
+  with existing admin patterns.
+- `components/admin/Sidebar.jsx` — new top-level `Storage Orphans` entry after Contact
+  (no infrastructure group existed; flat-entry convention followed).
+- `lib/api.js` — `apiCall` now forwards a body on DELETE as well (the orphans DELETE
+  carries its path list that way); no existing caller passed a DELETE body.
+- `tests/unit/storage-orphans.test.jsx` — 9 vitest component tests.
+
+### E2E
+
+- `tests/e2e/storage-orphans-journey.spec.js` — 2-test journey seeding deterministic
+  files on the active disk and deleting one through the real UI (details below).
+- `tests/e2e/helpers.js` — `loginAdmin` internal timeouts raised (15s → 60s goto,
+  30s networkidle/spinner waits) after they flaked on a loaded machine; no logic
+  changed, benefits every suite.
+
+---
+
+## Verification Results
+
+### Backend unit/feature tests
+
+First run: 9 passed, 4 failed — all four failures were mine to fix, two of them real
+bugs worth recording:
+
+- `'trim'` is **not** a valid Laravel validation rule in this version (docs say it
+  became one only in 11.35); the controller's `'paths.*' => ['string', 'trim', …]`
+  500'd every DELETE. Removed; trimming happens in the service. A test caught it.
+- Collecting "every string one level deep" from JSON arrays swept `tech_badges[].label`
+  text (`React`, `Vue`) into the reference set as pseudo-paths — `referenced_files`
+  reported 6 instead of 3. Narrowed to path-shaped keys (`url`, `*_path`, `*_url`).
+  A test caught it.
+
+Final: **13 passed (45 assertions)**.
+
+### Full PHPUnit suite (single sequential process, ~15 min)
+
+| Run | Result |
+| --- | --- |
+| Before (Part D) | 366 passed, 1298 assertions |
+| After | **379 passed, 1343 assertions** — 355 pre-existing + 13 new, 0 failures |
+
+### Frontend suites
+
+| Suite | Result |
+| --- | --- |
+| `portfolio-admin` vitest | **67 passed** (58 before + 9 new) |
+| `portfolio-frontend` vitest | 85 passed (untouched) |
+| `portfolio-admin` production build | ✅ compiled, `/admin/storage/orphans` route present |
+
+### Component-test findings (fixed in the page)
+
+The vitest render tests caught two more real bugs before any browser ran:
+
+1. **Crash on malformed API payload** — `setScan(result.data)` fed `undefined` into
+   render (`Cannot read properties of undefined (reading 'total_r2_files')`). The
+   success path now requires `data.total_r2_files !== undefined`.
+2. **Relative-time band misalignment** — the day band ended at 7 days but the month
+   band started at ~30.4, so an 8-day-old file rendered "last month". Rewritten with
+   an explicit week band (`8 days ago` → "1 week ago") and month/year fallbacks.
+
+### E2E journey (Playwright, real Chromium, production admin build)
+
+| Test | Result | Verified |
+| --- | --- | --- |
+| Scan lists the seeded orphans with accurate details | **PASS** (1.5m) | Both seeded files listed; sizes `15 B` / `19 B`; `4 days ago`; exactly 2 candidate rows |
+| Select → confirm → delete one orphan through the UI | **PASS** (1.9m) | Checkbox gates the button; AlertDialog names the exact file + undo warning; `Deleted 1 file` toast; refetched list keeps the survivor; **file physically gone from disk** |
+
+Final run: **2 passed (3.5m), no retries consumed**.
+
+**Safety of the e2e itself** (this exercised a *delete* endpoint): the backend was
+started with R2 env vars blanked, forcing `UploadService::disk()` → the local `public`
+disk (verified via tinker before starting; no config cache exists, so live env beats
+`.env`). **Zero contact with the production R2 bucket.** Deterministic seed files
+(`logos/e2e-orphan-a.png`, `cv/e2e-orphan-b.pdf`, backdated mtimes, distinct sizes)
+were planted with direct writes; no model or content rows were created. Afterwards the
+leftover witness file was removed and the server stopped; storage verified clean.
+
+### Environment hazards hit during e2e (documented for the next person)
+
+1. **Stale server squatting on :3001** — a `next start` from a previous session
+   pre-dated the new page and 404'd it; Playwright's `reuseExistingServer` happily
+   adopted it. `fuser -k 3001/tcp` first when a new route 404s.
+2. **Worker starvation** — with `PHP_CLI_SERVER_WORKERS=4`, the UI's DELETE+refetch
+   queued behind slow `/api/settings` calls (remote MySQL) and the toast outlived the
+   assertion window. 12 workers fixed it.
+3. **Vacuous-pass ordering** — asserting "deleted file is gone" first passes while the
+   refetch skeleton is still up; the survivor is awaited *first* so the fresh list is
+   proven rendered before the absence check. The spec comments this explicitly.
+4. **`touch -d 'N days ago'` drift** — sub-day clock drift moved a 3-day backdate to
+   the hour boundary; seeds now use explicit 96h backdating and the assertion matches
+   what the UI actually renders.
+
+---
+
+## Final Verification Summary
+
+| Check | Status | Notes |
+| --- | --- | --- |
+| Inventory exhaustive (2 passes over migrations) | ✅ | 12 columns, incl. 2 JSON-array shapes; re-check found nothing missed |
+| GET scan requires auth | ✅ | 401 without Sanctum token |
+| Referenced file excluded from candidates | ✅ | Model-seeded path never listed |
+| Unreferenced file included | ✅ | Backdated past grace period |
+| Grace period excludes fresh uploads | ✅ | Unreferenced + new → not listed |
+| JSON array + nested badge URLs collected | ✅ | `gallery_images[]`, `tech_badges[].logo_url` |
+| External URL never counted as reference | ✅ | Cannot shadow a disk object |
+| DELETE requires auth | ✅ | 401 without token |
+| Referenced-at-delete-time → skipped with reason | ✅ | Race guard re-checks fresh set; file survives |
+| Orphaned path → deleted for real | ✅ | Asserted on the fake disk; confirmed physically on disk in e2e |
+| Empty paths array → 422 | ✅ | Plus non-array body 422 |
+| Per-file failure never aborts batch | ✅ | Traversal path skipped, sibling deleted |
+| Deletion requires explicit UI selection + confirmation | ✅ | AlertDialog lists exact files; backend re-verifies regardless |
+| Nothing auto-deleted | ✅ | No scheduler, no scan side effects; deletes only from the admin endpoint |
+| Nothing deployed; production R2 untouched | ✅ | e2e ran against local public disk, R2 blanked |
+
+**All orphan-detector requirements met.** Files changed: 6 new (service, controller,
+2 test files, admin page, e2e spec) + 4 modified (routes, Sidebar, api.js, helpers.js).

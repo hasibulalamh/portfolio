@@ -41,7 +41,9 @@ api.interceptors.response.use(
 export const apiCall = async (method, endpoint, data = null) => {
   try {
     const config = { method, url: endpoint }
-    if (data && (method.toLowerCase() === 'post' || method.toLowerCase() === 'put')) {
+    // DELETE is included so a body can accompany a delete request (the
+    // storage orphans endpoint takes its path list that way).
+    if (data && ['post', 'put', 'delete'].includes(method.toLowerCase())) {
       config.data = data
     }
     const response = await api(config)
