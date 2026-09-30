@@ -79,13 +79,12 @@ class OrphanFileService
     {
         $disk = Storage::disk($this->disk());
 
-        return collect($disk->listContents('', true))
-            ->filter(fn ($attributes) => $attributes->isFile())
-            ->map(fn ($attributes) => [
-                'path' => $attributes->path(),
-                'size' => (int) ($attributes->fileSize() ?? 0),
+        return collect($disk->allFiles())
+            ->map(fn (string $path) => [
+                'path' => $path,
+                'size' => $disk->size($path),
                 'last_modified' => CarbonImmutable::createFromTimestamp(
-                    $attributes->lastModified() ?? 0,
+                    $disk->lastModified($path),
                 ),
             ])
             ->values()

@@ -95,8 +95,9 @@ class HealthCheckEndpointTest extends TestCase
         $response->assertOk();
         $data = $response->json('data');
 
-        // All systems should be healthy
-        $this->assertEquals('healthy', $data['status']);
+        // Both probes succeeded — the test DB answers (RefreshDatabase just
+        // migrated it) and the storage probe is a mock that returns false.
+        // That part is deterministic, so assert it hard.
         $this->assertEquals('healthy', $data['checks']['database']['status']);
         $this->assertEquals('healthy', $data['checks']['storage']['status']);
 
@@ -105,6 +106,27 @@ class HealthCheckEndpointTest extends TestCase
         $this->assertLessThan(5000, $data['checks']['database']['response_time_ms']);
         $this->assertGreaterThanOrEqual(0, $data['checks']['storage']['response_time_ms']);
         $this->assertLessThan(5000, $data['checks']['storage']['response_time_ms']);
+
+        // The overall status must be consistent with THIS payload's own
+        // response times, whatever they are. The old assertion pinned the
+        // exact string 'healthy', which silently asserts that the machine
+        // running the suite answered SELECT 1 and an S3 HeadObject in under
+        // 1 second — false on remote test databases with RTT spikes, and a
+        // claim about hardware rather than about the code. The 1000ms
+        // threshold rule itself is pinned deterministically, with synthetic
+        // timings, in HealthCheckStatusTest.
+        $expectedOverall = 'healthy';
+        if ($data['checks']['database']['response_time_ms'] > 1000
+            || $data['checks']['storage']['response_time_ms'] > 1000) {
+            $expectedOverall = 'degraded';
+        }
+        $this->assertEquals(
+            $expectedOverall,
+            $data['status'],
+            "Overall status '{$data['status']}' is inconsistent with the payload's own "
+            ."timings: db={$data['checks']['database']['response_time_ms']}ms, "
+            ."storage={$data['checks']['storage']['response_time_ms']}ms.",
+        );
     }
 
     public function test_storage_failure_is_reported_as_degraded_without_real_r2_access(): void
@@ -148,7 +170,8 @@ class HealthCheckEndpointTest extends TestCase
         Sanctum::actingAs(User::factory()->create());
 
         // Note: This is a soft test since we can't easily force a 1000ms+ delay
-        // in a real DB query. The threshold logic is tested in unit tests.
+        // in a real DB query. The threshold logic is pinned deterministically
+        // in tests/Unit/HealthCheckStatusTest.php with synthetic timings.
         // Here we just verify the endpoint doesn't error under normal conditions.
 
         $response = $this->getJson('/api/admin/health');
@@ -237,8 +260,8 @@ class HealthCheckEndpointTest extends TestCase
         $this->getJson('/api/admin/health')->assertOk();
 
         // Verify no health_check_logs or health_checks table was created
-        $tables = DB::select("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?", [
-            config('database.connections.' . config('database.default') . '.database'),
+        $tables = DB::select('SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?', [
+            config('database.connections.'.config('database.default').'.database'),
         ]);
 
         $tableNames = array_map(function ($table) {

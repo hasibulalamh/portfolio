@@ -27,3 +27,4 @@ portfolio-backend/public/hot
 test-results/
 infection-tmp/
 infection-log.txt
+storage/credentials/

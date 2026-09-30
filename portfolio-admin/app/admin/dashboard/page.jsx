@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/admin/Skeleton'
 import { apiCall } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
-import { BarChart3, FileText, MessageSquare, Calendar, AlertCircle, CheckCircle2, AlertTriangle, Target } from 'lucide-react'
+import { BarChart3, FileText, MessageSquare, Calendar, AlertCircle, CheckCircle2, AlertTriangle, Eye, Target } from 'lucide-react'
 
 const QUICK_ACTIONS = [
   { href: '/admin/settings', label: 'Update Site Settings' },
@@ -38,9 +38,11 @@ export default function DashboardPage() {
   })
   const [health, setHealth] = useState(null)
   const [conversions, setConversions] = useState(null)
+  const [analytics, setAnalytics] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isHealthLoading, setIsHealthLoading] = useState(true)
   const [isConversionsLoading, setIsConversionsLoading] = useState(true)
+  const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true)
 
   useEffect(() => {
     const loadStats = async () => {
@@ -123,6 +125,42 @@ export default function DashboardPage() {
 
     loadConversions()
   }, [])
+
+  useEffect(() => {
+    const loadAnalytics = async () => {
+      try {
+        const result = await apiCall('GET', '/admin/analytics/ga4')
+        if (result.success) {
+          setAnalytics(result.data)
+        } else {
+          setAnalytics({ error: result.errorType || 'unknown' })
+        }
+      } catch (error) {
+        setAnalytics({ error: 'unknown' })
+        console.error('Failed to load GA4 analytics:', error)
+      } finally {
+        setIsAnalyticsLoading(false)
+      }
+    }
+
+    loadAnalytics()
+  }, [])
+
+  // "last_30_days" from the backend → "Last 30 days" for the card. Anything
+  // else (e.g. a future period change server-side) renders raw rather than
+  // silently claiming a window the data isn't for.
+  const analyticsPeriodLabel = (period) =>
+    typeof period === 'string' && period.startsWith('last_')
+      ? `Last ${period.slice(5).replaceAll('_', ' ')}`
+      : period
+
+  // cached_at is an ISO-8601 snapshot time from the backend. Show it in the
+  // viewer's locale; if it ever fails to parse, show it raw rather than
+  // rendering "Invalid Date".
+  const analyticsTimestamp = (iso) => {
+    const date = new Date(iso)
+    return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
+  }
 
   // Rows for the Conversions card. Bar length is scaled against the largest
   // count — not the total — so one dominant type doesn't flatten every other
@@ -374,6 +412,59 @@ export default function DashboardPage() {
                   ))}
                 </ul>
               )}
+            </>
+          )}
+        </Card>
+      </div>
+
+      {/* GA4 traffic summary — read-only, cached server-side for an hour.
+          The backend answers 200 with { error: 'ga4_unavailable' } when
+          analytics can't be reached, so this card degrades to a message
+          rather than the request ever failing as a 500. */}
+      <div className="mt-6">
+        <Card className="p-6" data-testid="analytics-card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold">Analytics</h2>
+            <Eye className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+          </div>
+          {isAnalyticsLoading ? (
+            <Skeleton className="h-8 w-24" />
+          ) : !analytics || analytics.error ? (
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" aria-hidden="true" />
+              <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                Analytics unavailable
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-4">
+                <div data-testid="analytics-visitors">
+                  <p className="text-2xl font-bold tabular-nums">
+                    {analytics.visitors ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Visitors</p>
+                  <p className="text-xs text-muted-foreground">active users</p>
+                </div>
+                <div data-testid="analytics-sessions">
+                  <p className="text-2xl font-bold tabular-nums">
+                    {analytics.sessions ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Sessions</p>
+                </div>
+                <div data-testid="analytics-page-views">
+                  <p className="text-2xl font-bold tabular-nums">
+                    {analytics.page_views ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Page views</p>
+                </div>
+              </div>
+              <p className="mt-4 text-xs text-muted-foreground">
+                <span data-testid="analytics-period">
+                  {analyticsPeriodLabel(analytics.period)}
+                </span>{' '}
+                · as of {analyticsTimestamp(analytics.cached_at)}
+              </p>
             </>
           )}
         </Card>

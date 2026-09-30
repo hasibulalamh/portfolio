@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\ApiShowcaseController;
 use App\Http\Controllers\Admin\ContactInfoController;
 use App\Http\Controllers\Admin\ContactMessageController;
 use App\Http\Controllers\Admin\ConversionsController;
+use App\Http\Controllers\Admin\GA4Controller;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HeroController;
 use App\Http\Controllers\Admin\MeetingRequestController;
@@ -183,6 +184,12 @@ Route::middleware('auth:sanctum')->prefix('admin')->group(function () {
 
     // Aggregate CTA click counts — admin-only read over the click_events table.
     Route::get('/conversions', [ConversionsController::class, 'index']);
+
+    // Read-only GA4 traffic summary for the dashboard card. Server-side cached
+    // (config('analytics.cache_ttl_seconds')); on any failure the service
+    // returns a structured "ga4_unavailable" payload instead of throwing, so
+    // this route never 500s over analytics being down.
+    Route::get('/analytics/ga4', [GA4Controller::class, 'index']);
 
     // Storage hygiene — scan for unreferenced uploads; deletion requires an
     // explicit path list and re-verifies each path server-side before removal.
