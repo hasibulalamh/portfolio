@@ -15,8 +15,15 @@ export function Header({ user, onLogout, onToggleSidebar }) {
   useEffect(() => {
     if (!showUserMenu) return
 
+    // Capture the wrapper element for this effect's lifetime. Reading
+    // menuRef.current inside the handler races a re-render that swaps or
+    // unmounts the node between attaching the listener and the press, which
+    // would make contains() fail and close the menu under a menu-item press.
+    const menuEl = menuRef.current
+    if (!menuEl) return
+
     const handlePointerDown = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
+      if (!menuEl.contains(e.target)) {
         setShowUserMenu(false)
       }
     }
@@ -44,6 +51,9 @@ export function Header({ user, onLogout, onToggleSidebar }) {
       showToast("Error logging out, but you've been logged out locally", 'error')
     }
 
+    // Close deterministically as part of the action rather than relying on
+    // the outside-click listener: the menu must never outlive the logout.
+    setShowUserMenu(false)
     onLogout()
   }
 
@@ -85,6 +95,11 @@ export function Header({ user, onLogout, onToggleSidebar }) {
             <button
               type="button"
               role="menuitem"
+              // A press on a menu item is by definition "inside" the menu:
+              // keep it out of the document-level outside-close logic so the
+              // item's own click handler always gets to run, even if a future
+              // refactor moves this menu outside the ref-checked wrapper.
+              onMouseDown={(e) => e.stopPropagation()}
               onClick={handleLogout}
               disabled={isLoggingOut}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

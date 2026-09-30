@@ -5150,3 +5150,133 @@ deployed; no production data or storage touched. The flake was subsequently fixe
 deterministically (endpoint test now asserts consistency with the payload's own timings;
 `tests/Unit/HealthCheckStatusTest.php` pins the 1000ms rule table — Unit suite 203 → 209,
 full suite expectation 391 green).
+
+---
+
+# Part G — Admin User-Menu Logout Click Race Investigation & Fix
+
+**Date:** 2026-09-30  
+**Scope:** Bug report: clicking Logout in the admin header's user dropdown (top-right,
+email + Logout) closed the dropdown but never fired the logout action — no network
+request, no redirect. Locate, diagnose, minimally fix, and test. Health Check /
+Conversions / Orphans / GA4 explicitly out of scope — untouched.
+
+---
+
+## Diagnosis (the honest version)
+
+Located the component: `portfolio-admin/components/admin/Header.jsx`. State is a
+`showUserMenu` boolean; a document-level `mousedown` listener (attached only while the
+menu is open) closes the menu when the press lands outside `menuRef.current` — and that
+ref sits on the wrapper div containing BOTH the trigger button and the dropdown. Logout
+is a `<button role="menuitem" onClick={handleLogout}>` calling `apiCall('POST',
+'/logout')` then `onLogout()`.
+
+**The race hypothesized in the bug report does not exist in the current source.** The
+ref check is already the standard "fix (a)": menu items are inside the checked wrapper,
+so an item press can never be classified as outside. Proven, not assumed: five jsdom
+tests simulating real browser press sequences (mousedown → mouseup → click) were written
+FIRST and all passed against the unmodified file:
+
+- full press phase on Logout fires `POST /logout`
+- press starts on the item, menu re-renders mid-press, click lands afterwards — still fires
+- a press on a menu item is never treated as an outside click
+- outside mousedown closes the menu WITHOUT firing the logout call
+- a press inside the menu never unmounts the menu mid-press
+
+Two explanations remain for the production symptom (menu closes, no request, no
+redirect):
+
+1. **Stale deploy** — git history shows `Header.jsx` unchanged since the initial commit
+   (`cf03b07`); production may still run an earlier version whose outside-click check
+   predated fix (a).
+2. **Toast hit-test steal (found, real)** — `components/ui/toast.jsx` renders a
+   `fixed top-4 right-4 z-[60]` container whose toast cards are `pointer-events-auto`,
+   in the same top-right corner as the dropdown (`absolute … z-50`, inside a
+   `backdrop-blur` stacking context below the toast layer). While a toast is visible
+   (~3s), a press on the overlapped corner of the dropdown lands on the toast card →
+   outside `menuRef` → close-on-outside fires → the click never reaches Logout. Exactly
+   the reported symptom — but transient (toast lifetime), not persistent.
+
+Decision taken (user-approved): ship the defensive hardening; leave the toast layer
+untouched (its dismiss button needs pointer events, and the overlap window is ~3s).
+
+---
+
+## Changes Made (all in `Header.jsx` — minimal diff, no rewrite)
+
+1. Outside-click effect captures `menuRef.current` into a local (`menuEl`) at attach
+   time and returns early when null. The handler can no longer dereference a stale/null
+   ref if the node is swapped or unmounted between listener attach and press —
+   `contains()` can no longer fail for that reason and close the menu under a menu-item
+   press. Also portal-refactor-safe.
+2. Logout item gets `onMouseDown={(e) => e.stopPropagation()}` — a press on a menu item
+   is by definition "inside"; it never participates in the outside-close decision, even
+   if a future refactor moves the menu outside the ref-checked wrapper.
+3. `handleLogout` now closes the menu deterministically (`setShowUserMenu(false)`) after
+   the API resolves, before `onLogout()` — the menu can never outlive the logout action
+   as a side effect of outside-click bookkeeping. The "Logging out…" indicator is
+   preserved.
+
+Behavior explicitly preserved: outside mousedown still closes without logging out;
+Escape still closes; the trigger button's toggle is unchanged; the email row and any
+future menu items are unaffected.
+
+---
+
+## Verification Results
+
+### New component test file
+
+`tests/unit/header-logout.test.jsx` — 5 tests, following the existing conventions
+(explicit `afterEach(cleanup)` because vitest globals are off; `vi.mock` for `@/lib/api`
+and `@/components/ui/toast`; mirrors `storage-orphans.test.jsx`):
+
+1. fires the logout API call on a real click sequence (mousedown → mouseup → click)
+2. logs out when the press starts on the item but the click lands after a re-render
+3. never treats a press on the Logout item as an outside click (stopPropagation)
+4. closes the menu on outside mousedown WITHOUT firing the logout call
+5. keeps the menu open while the press is inside the menu
+
+### Test suites — before / after
+
+| Suite | Before | After |
+| --- | --- | --- |
+| `portfolio-admin` vitest | 73 passed (6 files) | **78 passed (7 files)** — +5 header-logout tests, ~7s |
+| `portfolio-backend` PHPUnit | 391 expected (post-Part-F addendum) | untouched |
+| `portfolio-frontend` vitest | 85 passed | untouched |
+
+### Notes
+
+- jsdom cannot reproduce the production symptom deterministically (no hit-testing, no
+  real stacking contexts), so the toast-steal path has no automated coverage; it is
+  documented above instead.
+- `npm run lint` in portfolio-admin remains broken pre-existing (`eslint: not found` —
+  see Part F); not re-run.
+
+---
+
+## Final Verification Summary
+
+| Check | Status | Notes |
+| --- | --- | --- |
+| Real press sequence on Logout fires `POST /logout` | ✅ | mousedown → mouseup → click, pinned by test |
+| Press on a menu item never classified as outside | ✅ | stopPropagation hardening, pinned by test |
+| Outside mousedown closes menu WITHOUT logout call | ✅ | regression-pinned |
+| Escape closes the menu | ✅ | untouched, reasoning preserved |
+| Trigger toggle unchanged | ✅ | untouched |
+| Menu never outlives the logout action | ✅ | deterministic close in `handleLogout` |
+| Health / Conversions / Orphans / GA4 untouched | ✅ | no shared files modified |
+| Nothing deployed | ✅ | local test runs only |
+
+---
+
+## Deliverables
+
+**Files changed (admin):** `components/admin/Header.jsx` (3-point hardening); new:
+`tests/unit/header-logout.test.jsx`. No backend files touched. No new dependencies.
+
+**Test results:** vitest 73 → 78 passed. Nothing deployed; no production data touched.
+If the symptom persists in production after this build ships, the remaining suspect is
+the toast-layer overlap documented above — one-line mitigation: remove
+`[&>*]:pointer-events-auto` from the toast container (costs click-outside-to-dismiss).
