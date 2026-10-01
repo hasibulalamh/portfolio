@@ -183,7 +183,7 @@ export function Hero({ hero = {} }) {
   return (
     <section
       id="home"
-      className="relative flex min-h-screen items-center overflow-hidden pt-24 pb-12 md:pb-16"
+      className="relative flex min-h-screen flex-col items-center overflow-hidden pt-24 pb-12 lg:flex-row md:pb-16"
     >
       {/* Background layers */}
       <div aria-hidden className="absolute inset-0 grid-pattern opacity-60" />
@@ -200,7 +200,7 @@ export function Hero({ hero = {} }) {
 
       {/* Scroll indicator */}
       <motion.div
-        className="absolute bottom-8 left-1/2 -translate-x-1/2"
+        className="relative order-2 mt-8 flex shrink-0 flex-col items-center lg:absolute lg:bottom-8 lg:left-1/2 lg:order-0 lg:mt-0 lg:-translate-x-1/2"
         animate={{ y: [0, 8, 0] }}
         transition={{ duration: 2, repeat: Infinity }}
       >
@@ -404,7 +404,7 @@ export function Hero({ hero = {} }) {
                 data-testid="hero-social-link"
                 data-platform={platform}
                 onClick={() => trackEvent(socialEventFor(platform))}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground transition-all duration-300 hover:-translate-y-1 hover:border-accent hover:text-accent"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground transition-all duration-300 hover:-translate-y-1 hover:border-accent hover:text-accent sm:h-11 sm:w-11"
               >
                 <SocialIcon platform={platform} className="h-5 w-5" />
               </a>
