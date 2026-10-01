@@ -5280,3 +5280,174 @@ and `@/components/ui/toast`; mirrors `storage-orphans.test.jsx`):
 If the symptom persists in production after this build ships, the remaining suspect is
 the toast-layer overlap documented above — one-line mitigation: remove
 `[&>*]:pointer-events-auto` from the toast container (costs click-outside-to-dismiss).
+
+---
+
+# Part H — Logout Dropdown Hit-Testing Fix (the real root cause)
+
+**Date:** 2026-10-01
+**Scope:** Bug report: the admin header's user dropdown renders on top but does not
+receive pointer events — DevTools hit-tests `p.text-muted-foreground.mt-2`
+("Welcome to your portfolio CMS admin panel", dashboard content BEHIND the menu) at
+the Logout button's screen position. Diagnose the stacking-context root cause, fix
+it, and verify with a REAL browser click. Nothing deployed.
+
+---
+
+## Step 1–2 — The cascade, traced (not guessed)
+
+The dropdown (`Header.jsx`) is `absolute … z-50` inside `div.relative` inside
+`header.glass-header` (`backdrop-blur-md …`, position **static**). The content that
+out-hit-tests it is `<main class="relative flex-1 overflow-auto p-6">` wrapping the
+dashboard page.
+
+Three facts combine to produce the symptom:
+
+1. **`backdrop-filter` ≠ `none` creates a stacking context** on both `glass-header`
+   and the menu's `glass-card` (CSS Filter Effects Level 2). The menu's `z-50` only
+   ever ranked INSIDE the header's context — it never competed at the page level.
+   Confirmed by inspection of `app/globals.css` (`@layer components`) — no
+   transform/filter/contain/isolation/will-change anywhere in the menu's ancestor
+   chain besides this.
+
+2. **The header is `position: static`.** A static element's stacking context paints
+   and hit-tests in the NON-POSITIONED phase of the root stacking context (CSS 2.1
+   Appendix E: stacked level 4 for in-flow blocks; the positioned phase is level 6).
+   `<main>` is `position: relative` with `z-index: auto` — positioned — so ALL of
+   its content, including that full-width paragraph, paints and hit-tests in a
+   LATER phase than the entire header. In this root context, z-index values do not
+   save you; only the static-vs-positioned split matters.
+
+3. **The paragraph's border box spans the full content width** (text is left-side,
+   box is full-width), so it intersects the logout button's coordinates even though
+   nothing VISIBLE paints there over the menu. Paint shows the menu on top; hit
+   testing walks the root context and finds `main`'s positioned subtree first.
+   Result: the exact reported symptom.
+
+**Why the previous attempt (Part G) could not work:** it hardened event timing
+(mouseDown sequence, stopPropagation, deterministic close) — all correct code, all
+passing 5 jsdom tests, none of which touch hit-testing. jsdom has no layout or
+paint engine; it cannot express this bug class. Likewise the two brief-hypothesized
+mechanisms ("backdrop-blur layer", "sticky header with own z-index") were checked
+and are NOT present.
+
+**Why a portal (the brief's preferred fix) makes it WORSE here:** `createPortal` to
+`document.body` relocates the node but not the rank problem — the menu still lands
+in `main`'s positioned subtree's shadow (a body-level absolute element with z-50
+compares against `main`'s positioned content at the SAME level; later DOM order
+wins → `main`'s content still out-hit-tests the portal). Worse, the menu would lose
+its `right-0 mt-2` anchor (containing block becomes the initial containing block)
+and the outside-click `menuRef.contains()` logic would need reworking. A portal
+only helps when the portalled element competes in a context it can actually win.
+
+## Step 3 — The fix
+
+One class pair on the header (`portfolio-admin/components/admin/Header.jsx`):
+
+```diff
+-    <header className="glass-header px-6 py-4 flex items-center justify-between">
++    <header className="glass-header relative z-30 px-6 py-4 flex items-center justify-between">
+```
+
+`relative z-30` promotes the header's ENTIRE backdrop-filter stacking context into
+the positioned phase of the root context, ranked above `main` (z-auto) and below
+every legitimate page-level overlay. The menu's own `z-50` is restored unchanged —
+inside the header's context it orders the menu above the trigger; page-level rank
+is now inherited from the header.
+
+Load-bearing constraints verified against every positioned element in the shell:
+
+| Page-level element | z | Source | Why header must stay below |
+| --- | --- | --- | --- |
+| Mobile sidebar scrim | 40 | `Sidebar.jsx` | scrim must cover header |
+| Dialog overlay/panel | 40/50 | `ui/dialog.jsx` | dialogs must cover header |
+| Mobile nav toggle | 50 | `Sidebar.jsx` | X button must stay clickable |
+| Toasts | 60 | `ui/toast.jsx` | top layer |
+| `<main>` content | auto | `app/admin/layout.jsx` | content must NOT out-hit-test header |
+
+`main`'s `relative` is NOT touched — it is load-bearing for the phantom-scroll fix
+(documented in the 2026-08-21 report above). Sidebar/toast values were also left
+functionally identical (comments added explaining the level system; Sidebar's
+z-50/z-40 verified correct as-is after an intermediate wrong-fix attempt was
+reverted — see "Process honesty" below).
+
+## Step 4 — Verification (real browser, real input)
+
+### The test that would have caught the original bug
+
+`tests/e2e/admin-header-dropdown-hit-testing.spec.js` (new, 2 tests, real
+Chromium):
+
+1. Opens the dashboard via the real login flow, opens the user menu, reads the
+   Logout item's **actual screen coordinates** from `boundingBox()`, then:
+   - **Guard assertion:** `document.elementsFromPoint(cx, cy)` must resolve to an
+     element inside `[role="menu"]`. This is the same paint-order + stacking
+     comparison the compositor uses for real input — the DOM-level mirror of what
+     DevTools highlights.
+   - **The regression assertion:** `page.mouse.click(cx, cy)` — CDP-synthesized
+     REAL input at screen coordinates, NOT `locator.click()`'s synthetic path —
+     must produce `POST /logout`. If the dropdown ever loses hit-testing again,
+     the click lands on page content behind, no request fires, and this fails.
+2. A real click on the dashboard heading (page content behind the open menu)
+   closes the menu — outside-click-to-close works with real input.
+
+### Before/after — captured live, not simulated
+
+The failed run happened in a genuinely useful way: on the intermediate
+"hardened-z-index-on-a-static-header" build, the new guard failed with EXACTLY the
+user's observation:
+
+```
+Error: Topmost hit-test target at the Logout button's screen position was
+"p.text-muted-foreground.mt-2" — the dropdown is visible but not receiving
+pointer events (stacking-context regression).
+```
+
+That proves the test reproduces the bug mechanically, and that z-index tweaks on
+the dropdown cannot fix it. After the `relative z-30` header fix:
+**2 passed (3.5m)**, re-confirmed again after the final build: **2 passed (2.7m)**.
+
+### Post-fix DOM position of the menu (as required)
+
+The menu is NOT portalled — it remains a React child of `div.relative` inside
+`header.glass-header.relative.z-30` inside the admin shell. Its stacking context
+chain is: menu (z-50, from `backdrop-filter` on `glass-card`) → header (z-30, from
+`backdrop-filter` on `glass-header`) → root context. In the root context the
+header's context now sorts in the positioned phase, above `<main>`'s positioned
+subtree — `elementsFromPoint` at the menu's coordinates resolves inside the menu
+(asserted by the test), and real CDP clicks land on the Logout item.
+
+### Suites
+
+| Suite | Result | Note |
+| --- | --- | --- |
+| `portfolio-admin` vitest (jsdom) | **78/78 pass** (7 files) | unchanged vs Part G; role-based assertions unaffected by class changes |
+| New E2E hit-testing spec | **2/2 pass** | real Chromium, real mouse, asserts POST /logout |
+| `admin-header-dropdown-hit-testing` on intermediate wrong fix | **fails with the user's exact symptom** | the test demonstrably reproduces the bug |
+| `hero-edit-propagation.spec.js` | fails by 120s timeout, **identically on the pre-change baseline** (verified via stash) | pre-existing environmental flake (ISR revalidation timing on this box), unrelated to this change |
+| `cms-admin-journeys.spec.js` | 2 skipped (needs ADMIN_* env) | unaffected |
+| `portfolio-admin` prod build | ✓ compiled | after fix |
+
+Nothing deployed; no production data touched (all E2E against a local
+`php artisan serve` backend and locally-served Next.js production builds).
+
+## Process honesty
+
+The first fix attempt in this session was WRONG: I initially reasoned the menu
+should be lowered to `z-20` "below the z-auto content line" — a misreading of how
+`main`'s `z-auto` positioned content interacts with static-phase contexts. The new
+E2E guard caught it immediately (the error above). The final fix is the inverse
+operation (raise the header into the positioned phase) and was proven by the same
+test. This is exactly why the brief demanded real-browser verification over unit
+tests.
+
+## Deliverables
+
+- `portfolio-admin/components/admin/Header.jsx` — `glass-header` header now
+  `relative z-30`; explanatory comments; menu markup/logic otherwise unchanged.
+- `portfolio-admin/components/admin/Sidebar.jsx` — comments only (z-values restored
+  to original z-50/z-40 after intermediate experiment).
+- `portfolio-admin/components/ui/toast.jsx` — comment only.
+- `tests/e2e/admin-header-dropdown-hit-testing.spec.js` — new real-click
+  hit-testing regression test (2 tests).
+- No backend files touched. No new dependencies. Nothing deployed.

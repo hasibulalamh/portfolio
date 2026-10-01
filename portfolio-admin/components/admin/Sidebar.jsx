@@ -66,6 +66,13 @@ export function Sidebar({ isOpen, onToggle }) {
         aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
         aria-expanded={isOpen}
         aria-controls="admin-sidebar-nav"
+        /* z-50: fixed with no backdrop-filter of its own, so it is a genuine
+           page-level stacking context and correctly outranks the positioned
+           <main> content (z-auto) and the header (z-30, see Header.jsx). Any
+           new fixed/floating control should keep a page-level positive
+           z-index AND avoid backdrop-filter unless its whole ancestor chain
+           is ranked accordingly — that combination is what trapped the
+           Header's user menu (report.md). */
         className="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-card border border-border"
       >
         {isOpen ? <X className="w-5 h-5" aria-hidden="true" /> : <Menu className="w-5 h-5" aria-hidden="true" />}
@@ -174,6 +181,8 @@ export function Sidebar({ isOpen, onToggle }) {
       {/* Mobile sidebar overlay */}
       {isOpen && (
         <div
+          // z-40: page-level context above <main> and the header (z-30),
+          // below the mobile toggle (z-50) so the X stays clickable.
           className="fixed inset-0 bg-black/50 md:hidden z-40"
           onClick={onToggle}
           aria-hidden="true"

@@ -123,6 +123,10 @@ export const Toast = ({ message, type = 'info', onClose }) => {
 
 export const ToastContainer = ({ children }) => {
   return (
+    // z-[60]: fixed with no backdrop-filter ancestor, so this is a genuine
+    // page-level context — the top layer of the admin z-scale (toasts 60 >
+    // dialogs/scrim 40–50 > header 30 > positioned content, see Header.jsx
+    // and report.md for the backdrop-filter stacking-context mechanism).
     <div className="fixed top-4 right-4 z-[60] max-w-md w-full pointer-events-none [&>*]:pointer-events-auto">
       {children}
     </div>

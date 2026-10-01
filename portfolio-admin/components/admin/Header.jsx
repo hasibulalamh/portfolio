@@ -18,7 +18,9 @@ export function Header({ user, onLogout, onToggleSidebar }) {
     // Capture the wrapper element for this effect's lifetime. Reading
     // menuRef.current inside the handler races a re-render that swaps or
     // unmounts the node between attaching the listener and the press, which
-    // would make contains() fail and close the menu under a menu-item press.
+    // would make contains() fail and close the menu under a press that was
+    // meant to land inside. Menu-item presses don't reach this handler at all
+    // (they stopPropagation at the item), so this only arbitrates the trigger.
     const menuEl = menuRef.current
     if (!menuEl) return
 
@@ -58,7 +60,26 @@ export function Header({ user, onLogout, onToggleSidebar }) {
   }
 
   return (
-    <header className="glass-header px-6 py-4 flex items-center justify-between">
+    /*
+     * relative z-30 — THE fix for "dropdown visible but unclickable".
+     *
+     * This header used to be position:static. Its backdrop-filter still
+     * created a stacking context, but a static element's context paints and
+     * hit-tests in the NON-POSITIONED phase of the root stacking context —
+     * which ranks below EVERY positioned element, including <main>
+     * (relative, z-auto, and load-bearing per report.md). The user menu's
+     * z-50 only ranked inside the header's trapped context, so the dashboard
+     * paragraph's full-width border box won every hit-test at the menu's
+     * coordinates: the menu looked fine (nothing visible paints over it)
+     * but clicks fell through to page content. No z-index ON the menu could
+     * ever fix that; only ranking the header's own context above main can.
+     *
+     * z-30 stays below every legitimate page-level overlay — mobile sidebar
+     * scrim (z-40), dialogs (z-40/50), mobile nav toggle (z-50), toasts
+     * (z-[60]) — so they still cover the header when open. Details in
+     * report.md.
+     */
+    <header className="glass-header relative z-30 px-6 py-4 flex items-center justify-between">
       <button
         type="button"
         onClick={onToggleSidebar}
@@ -87,6 +108,15 @@ export function Header({ user, onLogout, onToggleSidebar }) {
         </button>
 
         {showUserMenu && (
+          /*
+           * Positioned inside the relative wrapper above; the wrapper is
+           * inside the header's backdrop-filter stacking context, so this
+           * menu's page-level rank is the HEADER's z-30 — its own z-50 only
+           * orders it within that context (above the trigger, below nothing
+           * else that matters). Raising or lowering this value cannot fix or
+           * break hit-testing against page content; only the header's rank
+           * can. See the header comment and report.md.
+           */
           <div role="menu" className="absolute right-0 mt-2 w-48 glass-card rounded-lg shadow-lg p-2 z-50">
             <div className="px-3 py-2 text-sm text-muted-foreground break-all">
               {user?.email}
