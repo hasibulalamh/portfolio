@@ -87,10 +87,16 @@ class GA4Service
             return $this->unavailable('Analytics credential file is missing.');
         }
 
+        // Defensive: GA4_PROPERTY_ID may be configured with or without the
+        // "properties/" prefix the API expects. Strip it if present so a
+        // misconfigured env var never produces a malformed, duplicated
+        // "properties/properties/123" resource name.
+        $cleanPropertyId = preg_replace('#^properties/#', '', (string) $propertyId);
+
         try {
             $response = $this->client($credentialsPath)->runReport(
                 (new RunReportRequest)
-                    ->setProperty('properties/'.$propertyId)
+                    ->setProperty('properties/'.$cleanPropertyId)
                     ->setDateRanges([
                         (new DateRange)
                             ->setStartDate(now()->subDays((int) config('analytics.period_days', 30))->toDateString())
