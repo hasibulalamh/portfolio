@@ -104,30 +104,54 @@ function SkillCard({ skill }) {
   );
 }
 
-const AUTOPLAY_INTERVAL_MS = 3000;
-const TRANSITION_MS = 650;
-const LOOP_TOLERANCE_PX = 4;
+/*
+ * Skills marquee.
+ *
+ * The filtered card list is rendered several times inside a max-content
+ * track (see copyCount) that a CSS @keyframes animation translates from 0 to
+ * -50% — exactly one content period — on an infinite linear loop, so the
+ * wrap point is pixel-identical to the start (seamless). The animation and
+ * its pause states live in app/globals.css (.skills-marquee*): it pauses on
+ * :hover, :focus-within, while a manual arrow nudge is settling, and while
+ * the section is offscreen; @media (prefers-reduced-motion: reduce) turns it
+ * into a static list.
+ */
 
-function getStep(track) {
-  const card = track.querySelector('[data-skill-card]');
-  if (!card) return 0;
-  const gap = Number.parseFloat(getComputedStyle(track).columnGap) || 0;
-  return card.getBoundingClientRect().width + gap;
+// One full -50% cycle lasts SECONDS_PER_CARD per skill, so perceived speed is
+// identical for any category size (≈240px/s at desktop card width) — the
+// current 20-skill "All" list loops in ~24s; small categories floor at
+// MIN_CYCLE_SECONDS so a 2-skill set doesn't zip past frenetically.
+const SECONDS_PER_CARD = 1.2;
+const MIN_CYCLE_SECONDS = 12;
+
+// After an arrow nudge or touch the animation holds briefly, so the manual
+// nudge is not immediately fought by the auto-slide.
+const MANUAL_HOLD_MS = 2500;
+
+/*
+ * Copies of the filtered list needed for a seamless loop: half the track must
+ * always be at least one viewport wide. 2 copies cover 8+ skills on desktop;
+ * smaller lists repeat more.
+ */
+function copyCount(count) {
+  if (count >= 8) return 2;
+  if (count >= 4) return 4;
+  return 8;
 }
 
 export function Skills({ categories = [] }) {
   const [active, setActive] = useState('All');
-  const [canPrevious, setCanPrevious] = useState(false);
-  const [canNext, setCanNext] = useState(false);
-  const trackRef = useRef(null);
-  const sectionRef = useRef(null);
+  // Manual arrow nudge, in px, applied to .skills-marquee-offset. Normalized
+  // into (-period, 0] — visually a no-op thanks to the repeated content, but
+  // it keeps the offset bounded however often the arrows are used.
+  const [offset, setOffset] = useState(0);
+  // True right after an arrow nudge / touch: pauses the animation briefly.
+  const [hold, setHold] = useState(false);
 
-  const autoplayTimerRef = useRef(null);
-  const scrollEndTimerRef = useRef(null);
-  const hoverRef = useRef(false);
-  const reducedMotionRef = useRef(false);
-  const inViewRef = useRef(false);
-  const transitioningRef = useRef(false);
+  const trackRef = useRef(null);
+  const containerRef = useRef(null);
+  const sectionRef = useRef(null);
+  const holdTimerRef = useRef(null);
 
   const groups = Array.isArray(categories) ? categories : [];
 
@@ -166,205 +190,100 @@ export function Skills({ categories = [] }) {
     [active, skills],
   );
 
-  const clearAutoplay = useCallback(() => {
-    if (autoplayTimerRef.current !== null) {
-      clearTimeout(autoplayTimerRef.current);
-      autoplayTimerRef.current = null;
+  const copies = copyCount(filtered.length);
+  const duration = Math.max(
+    MIN_CYCLE_SECONDS,
+    Math.round(filtered.length * SECONDS_PER_CARD * 10) / 10,
+  );
+
+  const holdMarquee = useCallback(() => {
+    setHold(true);
+    if (holdTimerRef.current !== null) {
+      clearTimeout(holdTimerRef.current);
     }
+    holdTimerRef.current = setTimeout(() => {
+      holdTimerRef.current = null;
+      setHold(false);
+    }, MANUAL_HOLD_MS);
   }, []);
 
-  const checkLoopSnap = useCallback(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    const step = getStep(track);
-    if (step <= 0) return;
-    const realCount = filtered.length;
-    const boundary = realCount * step;
-    if (track.scrollLeft >= boundary - LOOP_TOLERANCE_PX) {
-      transitioningRef.current = true;
-      track.scrollTo({
-        left: Math.max(0, track.scrollLeft - boundary),
-        behavior: 'auto',
-      });
-      requestAnimationFrame(() => {
-        transitioningRef.current = false;
-      });
-    }
-  }, [filtered]);
-
-  const resetAutoplay = useCallback(() => {
-    clearAutoplay();
-    if (reducedMotionRef.current) return;
-    if (hoverRef.current) return;
-    if (!inViewRef.current) return;
-    if (filtered.length < 2) return;
-    autoplayTimerRef.current = setTimeout(() => {
-      const track = trackRef.current;
-      if (!track) {
-        resetAutoplay();
-        return;
+  useEffect(
+    () => () => {
+      if (holdTimerRef.current !== null) {
+        clearTimeout(holdTimerRef.current);
       }
-      const step = getStep(track);
-      if (step <= 0) {
-        resetAutoplay();
-        return;
-      }
-      transitioningRef.current = true;
-      track.scrollBy({
-        left: step,
-        behavior: reducedMotionRef.current ? 'auto' : 'smooth',
-      });
-      const settleMs = reducedMotionRef.current ? 120 : TRANSITION_MS + 80;
-      setTimeout(() => {
-        checkLoopSnap();
-        transitioningRef.current = false;
-        resetAutoplay();
-      }, settleMs);
-    }, AUTOPLAY_INTERVAL_MS);
-  }, [clearAutoplay, checkLoopSnap, filtered]);
+    },
+    [],
+  );
 
-  const updateNavigation = useCallback(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    const step = getStep(track);
-    const realCount = filtered.length;
-    const maxScroll = realCount * step;
-    const left = Math.min(track.scrollLeft, maxScroll - 1);
-    setCanPrevious(left > 2);
-    setCanNext(maxScroll - left > 2 + step * 0.25);
-  }, [filtered]);
-
-  const handleScroll = useCallback(() => {
-    updateNavigation();
-    if (transitioningRef.current) return;
-    clearAutoplay();
-    if (scrollEndTimerRef.current !== null) {
-      clearTimeout(scrollEndTimerRef.current);
-    }
-    scrollEndTimerRef.current = setTimeout(() => {
-      checkLoopSnap();
-      resetAutoplay();
-    }, 200);
-  }, [updateNavigation, clearAutoplay, checkLoopSnap, resetAutoplay]);
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return undefined;
-    reducedMotionRef.current = window.matchMedia(
-      '(prefers-reduced-motion: reduce)',
-    ).matches;
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const onMotionChange = (e) => {
-      reducedMotionRef.current = e.matches;
-      if (e.matches) {
-        clearAutoplay();
-      } else {
-        resetAutoplay();
-      }
-    };
-    if (typeof mq.addEventListener === 'function') {
-      mq.addEventListener('change', onMotionChange);
-    } else if (typeof mq.addListener === 'function') {
-      mq.addListener(onMotionChange);
-    }
-    track.scrollTo({ left: 0, behavior: 'auto' });
-    updateNavigation();
-    track.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', updateNavigation);
-    return () => {
-      track.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', updateNavigation);
-      if (typeof mq.removeEventListener === 'function') {
-        mq.removeEventListener('change', onMotionChange);
-      } else if (typeof mq.removeListener === 'function') {
-        mq.removeListener(onMotionChange);
-      }
-    };
-  }, [filtered, updateNavigation, handleScroll, clearAutoplay, resetAutoplay]);
-
+  // The CSS animation runs regardless of scroll position; only pause it when
+  // the section is offscreen (battery/GPU friendliness, same as before).
   useEffect(() => {
     const section = sectionRef.current;
-    if (!section) return undefined;
+    const container = containerRef.current;
+    if (
+      !section ||
+      !container ||
+      typeof IntersectionObserver === 'undefined'
+    ) {
+      return undefined;
+    }
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          inViewRef.current = entry.isIntersecting;
-          if (entry.isIntersecting) {
-            resetAutoplay();
-          } else {
-            clearAutoplay();
-          }
+          container.dataset.inview = entry.isIntersecting ? 'true' : 'false';
         }
       },
       { threshold: 0.1, rootMargin: '0px 0px -10% 0px' },
     );
     io.observe(section);
-    return () => {
-      io.disconnect();
-    };
-  }, [resetAutoplay, clearAutoplay]);
+    return () => io.disconnect();
+  }, []);
 
-  useEffect(() => {
-    if (tabs.includes(active)) return;
-    setActive('All');
-  }, [active, tabs]);
-
-  useEffect(() => {
-    resetAutoplay();
-    return () => clearAutoplay();
-  }, [resetAutoplay, clearAutoplay]);
-
-  const move = (direction) => {
+  // Arrow buttons: nudge the visible cards by exactly one card width via the
+  // offset wrapper (a 450ms eased transition in motion mode, an instant jump
+  // under prefers-reduced-motion), and hold the auto-slide while doing so.
+  const move = (direction, event) => {
     const track = trackRef.current;
     if (!track) return;
-    const step = getStep(track);
-    const distance = step > 0 ? step : track.clientWidth;
-    clearAutoplay();
-    transitioningRef.current = true;
-    track.scrollBy({
-      left: direction * distance,
-      behavior: reducedMotionRef.current ? 'auto' : 'smooth',
+    const card = track.querySelector('[data-skill-card]');
+    if (!card) return;
+    const gap = Number.parseFloat(getComputedStyle(track).columnGap) || 0;
+    const step = card.getBoundingClientRect().width + gap;
+    if (step <= 0) return;
+    // The track content repeats every period (half its width), so the nudge
+    // offset can be normalized into (-period, 0] with no visible jump.
+    const period = track.getBoundingClientRect().width / 2;
+    setOffset((prev) => {
+      let next = (prev - direction * step) % period;
+      if (next > 0) next -= period;
+      return next;
     });
-    const settleMs = reducedMotionRef.current ? 180 : TRANSITION_MS + 120;
-    setTimeout(() => {
-      checkLoopSnap();
-      transitioningRef.current = false;
-      updateNavigation();
-      resetAutoplay();
-    }, settleMs);
+    // A mouse click leaves focus on the button, which would latch the
+    // :focus-within pause and stop the auto-slide from ever resuming — blur
+    // so the hold below is what governs the resume. Keyboard activation
+    // (event.detail === 0) keeps focus deliberately: a focused user gets the
+    // stable, non-moving state for as long as they stay on the control.
+    if (event && event.detail > 0 && typeof event.currentTarget.blur === 'function') {
+      event.currentTarget.blur();
+    }
+    holdMarquee();
   };
 
-  const onMouseEnter = () => {
-    hoverRef.current = true;
-    clearAutoplay();
-  };
-
-  const onMouseLeave = () => {
-    hoverRef.current = false;
-    resetAutoplay();
+  const selectTab = (tab) => {
+    // A fresh filter starts from the first card with a freshly keyed track
+    // (key={active} remounts it, restarting the CSS animation at phase 0).
+    setOffset(0);
+    setHold(false);
+    if (holdTimerRef.current !== null) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    setActive(tab);
   };
 
   const onTouchStart = () => {
-    clearAutoplay();
-  };
-
-  const onTouchEnd = () => {
-    setTimeout(() => {
-      checkLoopSnap();
-      resetAutoplay();
-    }, 350);
-  };
-
-  const onWheel = () => {
-    if (transitioningRef.current) return;
-    clearAutoplay();
-    if (scrollEndTimerRef.current !== null) {
-      clearTimeout(scrollEndTimerRef.current);
-    }
-    scrollEndTimerRef.current = setTimeout(() => {
-      checkLoopSnap();
-      resetAutoplay();
-    }, 260);
+    holdMarquee();
   };
 
   return (
@@ -392,7 +311,7 @@ export function Skills({ categories = [] }) {
                   <button
                     key={tab}
                     type="button"
-                    onClick={() => setActive(tab)}
+                    onClick={() => selectTab(tab)}
                     aria-pressed={active === tab}
                     className={cn(
                       'rounded-full px-4 py-2 text-sm font-medium transition-all duration-300',
@@ -408,44 +327,53 @@ export function Skills({ categories = [] }) {
             )}
 
             <div
-              className="relative"
-              onMouseEnter={onMouseEnter}
-              onMouseLeave={onMouseLeave}
+              ref={containerRef}
+              className="relative skills-marquee"
+              data-hold={hold ? 'true' : undefined}
+              data-inview="true"
               onTouchStart={onTouchStart}
-              onTouchEnd={onTouchEnd}
-              onWheel={onWheel}
             >
               <div
-                ref={trackRef}
-                className="scrollbar-none flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-3 [&::-webkit-scrollbar]:hidden"
+                className="skills-marquee-viewport overflow-hidden pb-3"
                 aria-label={`${active} skills`}
               >
-                {filtered.map((skill) => (
-                  <div
-                    key={skill.id ?? `${skill.category}-${skill.name}`}
-                    data-skill-card
-                    className="w-[calc(100%-2.5rem)] shrink-0 snap-start sm:w-[calc(50%-0.5rem)] lg:w-[calc(25%-0.75rem)]"
-                  >
-                    <SkillCard skill={skill} />
-                  </div>
-                ))}
-                {filtered.map((skill) => (
-                  <div
-                    key={`clone-${skill.id ?? `${skill.category}-${skill.name}`}`}
-                    data-skill-clone
-                    aria-hidden="true"
-                    className="w-[calc(100%-2.5rem)] shrink-0 snap-start sm:w-[calc(50%-0.5rem)] lg:w-[calc(25%-0.75rem)]"
-                  >
-                    <SkillCard skill={skill} />
-                  </div>
-                ))}
+                <div
+                  className="skills-marquee-offset"
+                  style={{ '--marquee-offset': `${offset}px` }}
+                >
+                <div
+                  key={active}
+                  ref={trackRef}
+                  data-skills-track
+                  className="skills-marquee-track flex gap-4 pr-4"
+                  style={{ '--marquee-duration': `${duration}s` }}
+                >
+                  {Array.from({ length: copies }, (_, copy) =>
+                    filtered.map((skill) => {
+                      const isReal = copy === 0;
+                      const cardKey =
+                        skill.id ?? `${skill.category}-${skill.name}`;
+                      return (
+                        <div
+                          key={isReal ? cardKey : `clone-${copy}-${cardKey}`}
+                          data-skill-card={isReal ? 'true' : undefined}
+                          data-skill-clone={isReal ? undefined : 'true'}
+                          aria-hidden={isReal ? undefined : 'true'}
+                          className="w-[calc(100cqw_-_2.5rem)] shrink-0 sm:w-[calc(50cqw_-_0.5rem)] lg:w-[calc(25cqw_-_0.75rem)]"
+                        >
+                          <SkillCard skill={skill} />
+                        </div>
+                      );
+                    }),
+                  )}
+                </div>
+                </div>
               </div>
 
               <button
                 type="button"
                 aria-label="Previous skills"
-                disabled={!canPrevious}
-                onClick={() => move(-1)}
+                onClick={(event) => move(-1, event)}
                 className="absolute -left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-lg transition hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-30 sm:-left-5"
               >
                 <ChevronLeft className="h-5 w-5" aria-hidden="true" />
@@ -453,8 +381,7 @@ export function Skills({ categories = [] }) {
               <button
                 type="button"
                 aria-label="Next skills"
-                disabled={!canNext}
-                onClick={() => move(1)}
+                onClick={(event) => move(1, event)}
                 className="absolute -right-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-lg transition hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-30 sm:-right-5"
               >
                 <ChevronRight className="h-5 w-5" aria-hidden="true" />

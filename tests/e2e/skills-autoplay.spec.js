@@ -2,16 +2,18 @@ const { test, expect } = require('@playwright/test');
 const { gotoPublic } = require('./helpers');
 
 /*
- * Skills carousel autoplay behaviour.
+ * Skills marquee behaviour.
  *
- * The carousel must WAIT ~2.8s → slide exactly ONE card left → WAIT → …,
- * wrap around seamlessly, pause on hover, reset its timer after manual
- * interaction / category switches, respect prefers-reduced-motion, and never
- * cause horizontal page overflow. Read-only spec: it never mutates CMS data.
+ * The card track auto-slides continuously right-to-left (CSS keyframes,
+ * translateX 0 -> -50% of a repeated track), wraps seamlessly at the content
+ * period, pauses while hovered / keyboard-focused / right after a manual
+ * arrow nudge, restarts cleanly when a category filter changes, and renders
+ * as a static list under prefers-reduced-motion — never causing horizontal
+ * page overflow. Read-only spec: it never mutates CMS data.
  *
- * observeTrack() records every settled scroll position. The FIRST record is
- * just the starting snapshot (delta null, gapMs ~0.2s) — assertions therefore
- * only treat records WITH a delta as slides.
+ * sampleMotion() samples the track's animated translateX and "unwraps" each
+ * seamless period wrap, so a broken (visible-jump) loop shows up as a large
+ * negative delta while a seamless one stays smooth.
  */
 
 const VIEWPORTS = [
@@ -22,9 +24,9 @@ const VIEWPORTS = [
   { label: '1440px desktop', width: 1440, height: 900 },
 ];
 
-const trackLocator = (page) => page.locator('#skills .snap-x');
-
-const slideEvents = (result) => result.events.filter((event) => event.delta !== null);
+const trackLocator = (page) => page.locator('#skills [data-skills-track]');
+const viewportLocator = (page) =>
+  page.locator('#skills .skills-marquee-viewport');
 
 async function openSkills(page) {
   await gotoPublic(page);
@@ -33,290 +35,345 @@ async function openSkills(page) {
   // Keep the pointer away from the carousel so hover-pause never kicks in.
   await page.mouse.move(2, 2);
   await trackLocator(page).waitFor({ state: 'visible' });
-  // IntersectionObserver just started autoplay — give it a beat.
+  // Give the IntersectionObserver a beat to mark the section in view.
   await page.waitForTimeout(300);
-}
-
-/**
- * Sample the track's settled scroll positions for `durationMs` and return
- * every stable position change with its delta and the time since the previous
- * record. A "slide" moves ~one card width; the seamless loop snap is a large
- * instant jump back to ~0 (pixel-identical viewport, so invisible to users).
- */
-async function observeTrack(page, durationMs) {
-  return page.evaluate(
-    (duration) =>
-      new Promise((resolve) => {
-        const track = document.querySelector('#skills [data-skill-card]')?.parentElement;
-        if (!track) {
-          resolve(null);
-          return;
-        }
-        const card = track.querySelector('[data-skill-card]');
-        const gap = Number.parseFloat(getComputedStyle(track).columnGap) || 0;
-        const step = card.getBoundingClientRect().width + gap;
-
-        const started = performance.now();
-        let lastSeen = track.scrollLeft;
-        let stableSince = performance.now();
-        let lastRecorded = null;
-        let lastRecordedAt = performance.now();
-        const events = [];
-
-        const tick = () => {
-          const now = performance.now();
-          const left = track.scrollLeft;
-          if (Math.abs(left - lastSeen) > 1.5) {
-            lastSeen = left;
-            stableSince = now;
-          } else if (now - stableSince > 150) {
-            const position = Math.round(left);
-            if (lastRecorded === null || Math.abs(position - lastRecorded) > 1) {
-              events.push({
-                position,
-                delta: lastRecorded === null ? null : position - lastRecorded,
-                gapMs: Math.round(now - lastRecordedAt),
-                kind:
-                  lastRecorded === null ||
-                  Math.abs(position - lastRecorded) <= step * 1.5 + 4
-                    ? 'slide'
-                    : 'snap',
-              });
-              lastRecorded = position;
-              lastRecordedAt = now;
-            }
-          }
-          if (now - started >= duration) {
-            resolve({ step: Math.round(step), events });
-          } else {
-            requestAnimationFrame(tick);
-          }
-        };
-        requestAnimationFrame(tick);
-      }),
-    durationMs,
-  );
 }
 
 async function trackState(page) {
   return page.evaluate(() => {
-    const track = document.querySelector('#skills [data-skill-card]')?.parentElement;
+    const track = document.querySelector('#skills [data-skills-track]');
     if (!track) return null;
-    const card = track.querySelector('[data-skill-card]');
-    const gap = Number.parseFloat(getComputedStyle(track).columnGap) || 0;
-    const step = card.getBoundingClientRect().width + gap;
-    const trackRect = track.getBoundingClientRect();
+    const transform = getComputedStyle(track).transform;
+    const x = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41;
+
+    const realCards = [...track.querySelectorAll('[data-skill-card]')];
+    const step =
+      realCards.length > 1
+        ? realCards[1].getBoundingClientRect().left -
+          realCards[0].getBoundingClientRect().left
+        : 0;
+
+    const viewport = track.closest('.skills-marquee-viewport');
+    const viewportRect = viewport.getBoundingClientRect();
     const visible = [...track.children]
       .filter((child) => {
         const rect = child.getBoundingClientRect();
-        return rect.right > trackRect.left + 2 && rect.left < trackRect.right - 2;
+        return (
+          rect.right > viewportRect.left + 2 && rect.left < viewportRect.right - 2
+        );
       })
       .map((child) => child.querySelector('h3')?.textContent);
+
     return {
-      step,
-      scrollLeft: Math.round(track.scrollLeft),
-      realCount: track.querySelectorAll('[data-skill-card]').length,
+      // One content period = half of the track's width (the track renders
+      // the filtered list an even number of times).
+      period: track.getBoundingClientRect().width / 2,
+      x: Math.round(x * 10) / 10,
+      step: Math.round(step * 10) / 10,
+      realCount: realCards.length,
       cloneCount: track.querySelectorAll('[data-skill-clone]').length,
       clonesHidden: [...track.querySelectorAll('[data-skill-clone]')].every(
         (clone) => clone.getAttribute('aria-hidden') === 'true',
       ),
       visible,
+      animationName: getComputedStyle(track).animationName,
+      playState: track.getAnimations()[0]?.playState ?? 'none',
       pageOverflowX:
         document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
 }
 
-/** Scroll the track to the given card index (instantly, no autoplay wait). */
-async function scrollToIndex(page, index) {
-  return page.evaluate((cardIndex) => {
-    const track = document.querySelector('#skills [data-skill-card]').parentElement;
-    const card = track.querySelector('[data-skill-card]');
-    const gap = Number.parseFloat(getComputedStyle(track).columnGap) || 0;
-    track.scrollTo({
-      left: cardIndex * (card.getBoundingClientRect().width + gap),
-      behavior: 'auto',
-    });
-  }, index);
+/** Current translateX of the arrow-nudge wrapper (the offset layer). */
+async function offsetState(page) {
+  return page.evaluate(() => {
+    const wrapper = document.querySelector('.skills-marquee-offset');
+    if (!wrapper) return null;
+    const transform = getComputedStyle(wrapper).transform;
+    return transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41;
+  });
 }
 
-test.describe('skills carousel autoplay', () => {
+/**
+ * Sample the track's animated translateX for `durationMs`. The track moves
+ * leftward, so its phase (x mod period) DECREASES from period toward 0 and a
+ * seamless wrap shows up as a jump back UP to ~period. Each wrap is detected
+ * and folded back, so `deltas[].d` approximates the continuous leftward
+ * speed (small negative values): a visible jump at the loop point would show
+ * up as a large negative d, a stall as d ~ 0, rightward drift as d > 0.
+ */
+async function sampleMotion(page, durationMs, intervalMs = 100) {
+  return page.evaluate(
+    ({ duration, interval }) =>
+      new Promise((resolve) => {
+        const track = document.querySelector('#skills [data-skills-track]');
+        if (!track) {
+          resolve(null);
+          return;
+        }
+        const period = track.getBoundingClientRect().width / 2;
+        const readX = () => {
+          const transform = getComputedStyle(track).transform;
+          return transform === 'none'
+            ? 0
+            : new DOMMatrixReadOnly(transform).m41;
+        };
+
+        const started = performance.now();
+        let lastPhase = null;
+        let lastT = performance.now();
+        let cumulative = 0;
+        const deltas = [];
+
+        const tick = () => {
+          const now = performance.now();
+          const x = readX();
+          const phase = ((x % period) + period) % period;
+          if (lastPhase !== null) {
+            let d = phase - lastPhase;
+            // Seamless wrap: phase jumped from ~0 back up to ~period.
+            const wrapped = d > period / 2;
+            if (wrapped) d -= period;
+            deltas.push({ dt: Math.round(now - lastT), d: Math.round(d * 10) / 10, wrapped });
+            cumulative += d;
+          }
+          lastPhase = phase;
+          lastT = now;
+          if (now - started >= duration) {
+            resolve({
+              period: Math.round(period),
+              cumulative: Math.round(cumulative),
+              deltas,
+            });
+          } else {
+            setTimeout(tick, interval);
+          }
+        };
+        tick();
+      }),
+    { duration: durationMs, interval: intervalMs },
+  );
+}
+
+test.describe('skills marquee', () => {
   for (const { label, width, height } of VIEWPORTS) {
-    test(`advances exactly one card per step at ${label}`, async ({ page }) => {
+    test(`slides continuously right-to-left at ${label}`, async ({ page }) => {
       test.setTimeout(60_000);
       await page.setViewportSize({ width, height });
       await openSkills(page);
 
-      const before = await trackState(page);
-      expect(before.realCount).toBeGreaterThanOrEqual(4);
-      // A scrollable track needs loop clones; they must be hidden from a11y.
-      expect(before.cloneCount).toBeGreaterThan(0);
-      expect(before.clonesHidden).toBe(true);
-      expect(before.pageOverflowX).toBeLessThanOrEqual(1);
+      const state = await trackState(page);
+      expect(state.realCount).toBeGreaterThanOrEqual(4);
+      // The repeated track needs hidden-from-a11y clone copies.
+      expect(state.cloneCount).toBeGreaterThan(0);
+      expect(state.clonesHidden).toBe(true);
+      expect(state.animationName).toBe('skills-marquee');
+      expect(state.playState).toBe('running');
+      expect(state.pageOverflowX).toBeLessThanOrEqual(1);
 
-      // ~12s catches three autoplay ticks (first at ~2.8s, cadence ~3.45s).
-      const { step, events } = await observeTrack(page, 12_000);
-      const slides = slideEvents({ events });
-      expect(step).toBeGreaterThan(100);
-      expect(slides.length, JSON.stringify(events)).toBeGreaterThanOrEqual(3);
-
-      for (const event of slides) {
-        // Exactly ONE card (one step) per slide — never two, never a marquee.
+      const motion = await sampleMotion(page, 4_000);
+      // Continuous leftward motion — roughly card-speed (~200-260px/s),
+      // recorded as negative displacement.
+      expect(motion.cumulative, JSON.stringify(motion.deltas)).toBeLessThan(-150);
+      // Never any rightward drift, stall, or visible loop jump: unwrapped
+      // deltas stay small and negative.
+      for (const delta of motion.deltas) {
         expect(
-          Math.abs(event.delta - step),
-          `delta ${event.delta} vs step ${step}: ${JSON.stringify(events)}`,
-        ).toBeLessThanOrEqual(3);
-        // The WAIT before each slide is roughly 2.5–3s+.
-        expect(event.gapMs).toBeGreaterThanOrEqual(2400);
-        expect(event.gapMs).toBeLessThanOrEqual(7000);
+          delta.d,
+          `delta ${delta.d} over ${delta.dt}ms: ${JSON.stringify(motion.deltas)}`,
+        ).toBeLessThanOrEqual(2);
+        expect(delta.d).toBeGreaterThan(-motion.period / 2);
       }
 
-      const after = await trackState(page);
-      expect(after.pageOverflowX).toBeLessThanOrEqual(1);
+      expect((await trackState(page)).pageOverflowX).toBeLessThanOrEqual(1);
     });
   }
 
-  test('wraps around seamlessly and keeps autoplaying', async ({ page }) => {
+  test('wraps around seamlessly at the content period and keeps looping', async ({
+    page,
+  }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1440, height: 900 });
     await openSkills(page);
 
-    const state = await trackState(page);
-    const { realCount } = state;
-
-    // The viewport parked on the aligned clones (index == realCount) must
-    // look exactly like the start — that equivalence is what makes the snap
-    // back to 0 invisible.
-    await scrollToIndex(page, realCount);
-    const namesAtAligned = (await trackState(page)).visible;
-    await scrollToIndex(page, 0);
-    const namesAtStart = (await trackState(page)).visible;
-    expect(namesAtAligned).toEqual(namesAtStart);
-
-    // Park just before the end so the wrap happens within seconds.
-    await scrollToIndex(page, realCount - 1);
+    // Force a quick 3s loop so several wraps fit inside the sample window.
+    await page.evaluate(() => {
+      const track = document.querySelector('#skills [data-skills-track]');
+      track.style.animationDuration = '3s';
+    });
     await page.waitForTimeout(200);
 
-    // Autoplay continues: one more slide, seamless snap to the start, then
-    // the cycle resumes with a normal wait.
-    const { step, events } = await observeTrack(page, 10_000);
-    const firstSnap = events.findIndex((event) => event.kind === 'snap');
-    expect(firstSnap, JSON.stringify(events)).toBeGreaterThan(0);
-    const slideBeforeSnap = events[firstSnap - 1];
-    expect(slideBeforeSnap.delta).not.toBeNull();
-    expect(Math.abs(slideBeforeSnap.delta - step)).toBeLessThanOrEqual(3);
-    expect(events[firstSnap].position).toBeLessThanOrEqual(3);
-    const slideAfterSnap = events[firstSnap + 1];
-    expect(slideAfterSnap.kind).toBe('slide');
-    expect(Math.abs(slideAfterSnap.delta - step)).toBeLessThanOrEqual(3);
-    expect(slideAfterSnap.gapMs).toBeGreaterThanOrEqual(2400);
+    const motion = await sampleMotion(page, 7_600, 80);
+
+    await page.evaluate(() => {
+      const track = document.querySelector('#skills [data-skills-track]');
+      track.style.removeProperty('animation-duration');
+    });
+
+    const wraps = motion.deltas.filter((delta) => delta.wrapped).length;
+    expect(
+      wraps,
+      `period ${motion.period}px: ${JSON.stringify(motion.deltas)}`,
+    ).toBeGreaterThanOrEqual(1);
+    // Seamless: even across wraps, no sample ever moves right or jumps.
+    for (const delta of motion.deltas) {
+      expect(delta.d).toBeLessThanOrEqual(2);
+      expect(delta.d).toBeGreaterThan(-motion.period / 2);
+    }
+    expect(motion.cumulative).toBeLessThan(-100);
   });
 
-  test('category switch resets position and restarts autoplay', async ({ page }) => {
+  test('hover pauses the marquee, leaving resumes it', async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1440, height: 900 });
     await openSkills(page);
 
-    // Let at least one autoplay slide happen on "All" first.
-    const initial = await observeTrack(page, 5_000);
-    expect(slideEvents(initial).length).toBeGreaterThanOrEqual(1);
+    // Confirm the marquee is live, then hover the carousel.
+    const before = await sampleMotion(page, 2_000);
+    expect(before.cumulative).toBeLessThan(-100);
 
-    await page.getByRole('button', { name: 'Backend', exact: true }).click();
+    // Hover the clipped viewport (the track itself is wider than the screen).
+    await viewportLocator(page).hover();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#skills [data-skills-track]')?.getAnimations()[0]
+          ?.playState === 'paused',
+      undefined,
+      { timeout: 3_000 },
+    );
+    const whileHovered = await sampleMotion(page, 2_000);
+    expect(Math.abs(whileHovered.cumulative), JSON.stringify(whileHovered)).toBeLessThanOrEqual(2);
 
-    const track = trackLocator(page);
-    await expect(track).toHaveAttribute('aria-label', 'Backend skills');
-    const state = await trackState(page);
-    expect(state.realCount).toBe(6);
-    expect(state.scrollLeft).toBeLessThanOrEqual(2);
+    // Resume on pointer leave.
+    await page.mouse.move(2, 2);
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#skills [data-skills-track]')?.getAnimations()[0]
+          ?.playState === 'running',
+      undefined,
+      { timeout: 3_000 },
+    );
+    const resumed = await sampleMotion(page, 2_500);
+    expect(resumed.cumulative).toBeLessThan(-100);
+  });
 
-    // Autoplay restarts from the first skill of the category after a full
-    // wait — not immediately.
-    const { step, events } = await observeTrack(page, 8_000);
-    const slides = slideEvents({ events });
-    expect(slides.length, JSON.stringify(events)).toBeGreaterThanOrEqual(2);
-    expect(slides[0].gapMs, JSON.stringify(events)).toBeGreaterThanOrEqual(2400);
-    for (const event of slides) {
-      expect(Math.abs(event.delta - step)).toBeLessThanOrEqual(3);
-    }
+  test('keyboard focus inside the carousel pauses it too', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openSkills(page);
 
-    // After the observed slides the viewport leads with the matching
-    // Backend skill (one card per slide, from the category's first skill).
-    const backend = [
-      'PHP',
-      'Laravel',
-      'PHP OOP',
-      'Eloquent ORM',
-      'MVC Architecture',
-      'Authentication & RBAC',
-    ];
-    const visible = (await trackState(page)).visible;
-    expect(visible.slice(0, backend.slice(slides.length).length)).toEqual(
-      backend.slice(slides.length),
+    await page.getByRole('button', { name: 'Next skills' }).focus();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#skills [data-skills-track]')?.getAnimations()[0]
+          ?.playState === 'paused',
+      undefined,
+      { timeout: 3_000 },
+    );
+    const whileFocused = await sampleMotion(page, 1_500);
+    expect(Math.abs(whileFocused.cumulative)).toBeLessThanOrEqual(2);
+
+    await page.getByRole('button', { name: 'Next skills' }).blur();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#skills [data-skills-track]')?.getAnimations()[0]
+          ?.playState === 'running',
+      undefined,
+      { timeout: 3_000 },
     );
   });
 
-  test('hover pauses autoplay on desktop, resume resets the timer', async ({ page }) => {
+  test('category switch restarts the track cleanly from the first card', async ({
+    page,
+  }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1440, height: 900 });
     await openSkills(page);
 
-    // Confirm autoplay is live, then hover the carousel.
-    const before = await observeTrack(page, 5_000);
-    expect(slideEvents(before).length).toBeGreaterThanOrEqual(1);
+    // Let the track run away from phase 0 on "All" first.
+    const initial = await sampleMotion(page, 3_000);
+    expect(initial.cumulative).toBeLessThan(-100);
 
-    await trackLocator(page).hover();
-    const hovered = await trackState(page);
-    await page.waitForTimeout(5_000);
-    const whileHovered = await trackState(page);
-    expect(whileHovered.scrollLeft).toBe(hovered.scrollLeft);
+    await page.getByRole('button', { name: 'Backend', exact: true }).click();
 
-    // Resume on pointer leave: a fresh full wait, then normal one-card steps.
-    await page.mouse.move(2, 2);
-    const resumed = await observeTrack(page, 7_000);
-    const resumedSlides = slideEvents(resumed);
-    expect(resumedSlides.length, JSON.stringify(resumed.events)).toBeGreaterThanOrEqual(1);
-    expect(resumedSlides[0].gapMs).toBeGreaterThanOrEqual(2400);
-    expect(resumedSlides[0].delta).toBeGreaterThan(0);
+    await expect(viewportLocator(page)).toHaveAttribute(
+      'aria-label',
+      'Backend skills',
+    );
+    const state = await trackState(page);
+    expect(state.realCount).toBe(6);
+    // Re-keyed track: the animation restarted at phase 0 (no stale state).
+    expect(Math.abs(state.x)).toBeLessThan(100);
+    expect(state.visible[0]).toBe('PHP');
+
+    // The marquee is already moving again on the new (shorter) track.
+    const after = await sampleMotion(page, 3_000);
+    expect(after.cumulative).toBeLessThan(-100);
+    for (const delta of after.deltas) {
+      expect(delta.d).toBeLessThanOrEqual(2);
+      expect(delta.d).toBeGreaterThan(-after.period / 2);
+    }
   });
 
-  test('prev/next move one card and reset the autoplay timer', async ({ page }) => {
+  test('prev/next nudge one card, briefly hold the marquee, then resume', async ({
+    page,
+  }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1440, height: 900 });
     await openSkills(page);
 
-    await observeTrack(page, 5_000); // autoplay confirmed running
     const start = await trackState(page);
+    expect(start.step).toBeGreaterThan(100);
 
     await page.getByRole('button', { name: 'Next skills' }).click();
-    await page.waitForTimeout(600);
-    const afterNext = await trackState(page);
-    expect(
-      Math.abs(afterNext.scrollLeft - (start.scrollLeft + start.step)),
-    ).toBeLessThanOrEqual(3);
+    // The nudge (450ms transition) runs while the animation is held.
+    await page.waitForTimeout(120);
+    expect((await trackState(page)).playState).toBe('paused');
+    await page.waitForTimeout(700);
+    const afterNext = await offsetState(page);
+    expect(Math.abs(afterNext - (0 - start.step))).toBeLessThanOrEqual(3);
 
-    // No immediate auto-slide after manual interaction: the wait is reset.
-    await page.waitForTimeout(2_200);
-    const settled = await trackState(page);
-    expect(settled.scrollLeft).toBe(afterNext.scrollLeft);
-
-    // The pointer still rests on the (hovered) Next button, so move it away
-    // first — autoplay then resumes with a fresh full wait.
+    // The hold expires and the marquee resumes (pointer parked away first).
     await page.mouse.move(2, 2);
-    const resumed = await observeTrack(page, 6_000);
-    const resumedSlides = slideEvents(resumed);
-    expect(resumedSlides.length, JSON.stringify(resumed.events)).toBeGreaterThanOrEqual(1);
-    expect(resumedSlides[0].gapMs).toBeGreaterThanOrEqual(2400);
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#skills [data-skills-track]')?.getAnimations()[0]
+          ?.playState === 'running',
+      undefined,
+      { timeout: 6_000 },
+    );
+    const resumed = await sampleMotion(page, 2_500);
+    expect(resumed.cumulative).toBeLessThan(-100);
 
-    const beforePrev = await trackState(page);
+    const beforePrev = await offsetState(page);
     await page.getByRole('button', { name: 'Previous skills' }).click();
-    await page.waitForTimeout(600);
-    const afterPrev = await trackState(page);
-    expect(
-      Math.abs(afterPrev.scrollLeft - (beforePrev.scrollLeft - beforePrev.step)),
-    ).toBeLessThanOrEqual(3);
+    await page.waitForTimeout(700);
+    const afterPrev = await offsetState(page);
+    expect(Math.abs(afterPrev - (beforePrev + start.step))).toBeLessThanOrEqual(3);
   });
 
-  test('prefers-reduced-motion disables autoplay but keeps manual control', async ({
+  test('rapid arrow nudges stay normalized within one content period', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openSkills(page);
+
+    const start = await trackState(page);
+    for (let i = 0; i < 5; i += 1) {
+      await page.getByRole('button', { name: 'Next skills' }).click();
+      await page.waitForTimeout(150);
+    }
+    await page.waitForTimeout(700);
+
+    const offset = await offsetState(page);
+    // Exactly five card-widths leftward, always inside (-period, 0].
+    expect(Math.abs(offset - -5 * start.step)).toBeLessThanOrEqual(6);
+    expect(offset).toBeLessThanOrEqual(0);
+    expect(offset).toBeGreaterThan(-start.period);
+  });
+
+  test('prefers-reduced-motion renders a static list but keeps arrow control', async ({
     page,
   }) => {
     test.setTimeout(45_000);
@@ -324,44 +381,28 @@ test.describe('skills carousel autoplay', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openSkills(page);
 
-    const idle = await observeTrack(page, 6_000);
-    expect(slideEvents(idle).length, JSON.stringify(idle.events)).toBe(0);
-    expect((await trackState(page)).scrollLeft).toBeLessThanOrEqual(2);
-
-    // Manual navigation still works, and moves instantly (no animation).
-    await page.getByRole('button', { name: 'Next skills' }).click();
-    await page.waitForTimeout(250);
     const state = await trackState(page);
-    expect(Math.abs(state.scrollLeft - state.step)).toBeLessThanOrEqual(3);
+    expect(state.animationName).toBe('none');
+    expect(state.playState).toBe('none');
+
+    const idle = await sampleMotion(page, 2_000);
+    expect(idle.cumulative).toBe(0);
+    expect(state.pageOverflowX).toBeLessThanOrEqual(1);
+
+    // Arrows still work — instantly, with no eased transition. "Next"
+    // nudges the content one card to the left (negative offset).
+    await page.getByRole('button', { name: 'Next skills' }).click();
+    await page.waitForTimeout(80);
+    expect(await offsetState(page)).toBeCloseTo(-state.step, 0);
 
     // Category filters still reset to the first card.
     await page.getByRole('button', { name: 'Backend', exact: true }).click();
-    await expect(trackLocator(page)).toHaveAttribute('aria-label', 'Backend skills');
-    expect((await trackState(page)).scrollLeft).toBeLessThanOrEqual(2);
-  });
-
-  test('horizontal wheel scroll still works and snaps to a card', async ({ page }) => {
-    test.setTimeout(45_000);
-    await page.setViewportSize({ width: 390, height: 820 });
-    await openSkills(page);
-
-    const start = await trackState(page);
-    await trackLocator(page).hover();
-    await page.mouse.wheel(360, 0);
-    await page.waitForTimeout(1_200);
-
-    const scrolled = await trackState(page);
-    expect(scrolled.scrollLeft).toBeGreaterThan(start.scrollLeft);
-    // Native scroll-snap must land on a card boundary.
-    expect(Math.abs(scrolled.scrollLeft % scrolled.step)).toBeLessThanOrEqual(3);
-
-    // Autoplay resumes after the manual interaction (timer was reset).
-    await page.mouse.move(2, 2);
-    const resumed = await observeTrack(page, 7_500);
-    expect(
-      slideEvents(resumed).some((event) => event.gapMs >= 2400),
-      JSON.stringify(resumed.events),
-    ).toBe(true);
-    expect((await trackState(page)).pageOverflowX).toBeLessThanOrEqual(1);
+    await expect(viewportLocator(page)).toHaveAttribute(
+      'aria-label',
+      'Backend skills',
+    );
+    const after = await trackState(page);
+    expect(after.realCount).toBe(6);
+    expect(Math.abs(after.x)).toBeLessThanOrEqual(3);
   });
 });

@@ -513,6 +513,11 @@ async function settleFullPageContent(page) {
 async function loadHomepageForSnapshot(page, options = {}) {
   await ensureAllSectionsVisible(page);
   await waitForAllSectionsServed(page, options);
+  // Freeze the skills marquee for pixel-stable captures: the track pauses via
+  // its own prefers-reduced-motion media query (see globals.css), so every
+  // run captures the same resting frame (first cards, translateX(0)) instead
+  // of a random mid-scroll frame of the continuously animating track.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitForOverlay(page);
   await settleFullPageContent(page);

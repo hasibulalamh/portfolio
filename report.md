@@ -5451,3 +5451,123 @@ tests.
 - `tests/e2e/admin-header-dropdown-hit-testing.spec.js` — new real-click
   hit-testing regression test (2 tests).
 - No backend files touched. No new dependencies. Nothing deployed.
+
+---
+
+# Part I — Skills Marquee Verification, Homepage Section Diagnosis & CMS Content Restoration
+
+**Date:** 2026-10-03  
+**Scope:** Verify the skills auto-slide marquee refinement (uncommitted working-tree changes), diagnose why the `apis` and `testimonials` homepage sections vanished from the SSR render and broke the fullPage snapshot test, restore the sections with placeholder content via the admin API, and investigate + re-baseline the stale hero-viewport snapshot.
+
+---
+
+## Skills marquee (refinement verification)
+
+The working tree held a refinement pass on top of `fd4e09a` (autoplay commit):
+doubled/repeated track rendered 2–8× by list size (`copyCount`), separate
+`--marquee-offset` transform layer so arrow nudges never fight the CSS
+animation, IntersectionObserver-driven offscreen pause, blur-on-mouse-click so
+`:focus-within` doesn't latch the pause, and `key={active}` track re-mount for
+clean filter restarts. Only cleanup applied this session: JSX formatting
+artifacts around the viewport/offset wrappers.
+
+**Cycle duration chosen:** `SECONDS_PER_CARD = 1.2s` per skill with a
+`MIN_CYCLE_SECONDS = 12` floor — constant perceived speed at any category size;
+the 20-skill "All" list loops in 24s.
+
+**Verification:**
+
+| Suite | Result |
+|---|---|
+| `portfolio-frontend` vitest unit suite | **85/85 pass** (5 files; no Skills unit tests exist — Skills coverage is E2E) |
+| `tests/e2e/skills-autoplay.spec.js` | **12/12 pass** — 5 viewports (320/390/768/1024/1440), seamless wrap, hover pause/resume, keyboard-focus pause, filter restart at phase 0, arrow nudge + 2.5s hold + resume, rapid-nudge normalization, prefers-reduced-motion static list |
+| `eslint` | not installed in portfolio-frontend (pre-existing; lint script exists without the dependency) |
+
+## Homepage missing-sections diagnosis (`apis`, `testimonials`)
+
+**Symptom:** `visual-snapshots › public homepage` failed in
+`waitForAllSectionsServed` with `still missing: apis, testimonials` — before any
+screenshot.
+
+**Causal chain (all steps verified):**
+
+1. `app/page.jsx` renders a section only when visible **and** non-empty
+   (`SECTION_REGISTRY[key].hasContent`; list sections gate on `length > 0` — by
+   design, so an empty section never contributes a nav link to a missing
+   anchor).
+2. Frontend fetches the correct routes (`/api-showcases`, `/api/testimonials` in
+   `lib/api.js`; both registered in backend `routes/api.php`). Both returned
+   200 with `"data":[]`. (An earlier note claiming `/api/apis` "does not exist"
+   was this investigator's wrong probe path, not a real finding.)
+3. Root cause: **`api_showcases` and `testimonials` tables had 0 rows** in the
+   Aiven MySQL `defaultdb` the local backend serves (skills 20 / projects 4 /
+   timeline 3 were populated).
+4. Why empty: no seeder/factory populates either table
+   (`DatabaseSeeder` = admin user + singletons + section-visibility rows only);
+   no test suite deletes them. `'apis'` entered `HOMEPAGE_SECTION_IDS` and the
+   last snapshot baselines were both captured in `89cf00c` (2026-09-15), which
+   could only pass with rows present — so rows were removed after that date by
+   something outside version control (admin-panel deletion or a DB refresh with
+   skipped re-entry). DB content is not git-visible, so the exact deletion event
+   is unprovable from the repo.
+
+**Not caused by:** the marquee change (additive CSS + skills-scoped JSX only).
+
+## Content restoration via admin API
+
+Inserted 7 clearly-labeled placeholder rows through `POST /api/admin/*`
+(Sanctum token from `/api/login`): 4 api-showcases (ids 1–4: stripe / mailgun /
+pusher / googlemaps — slugs verified against `lib/simple-icons-index.js`; twilio,
+openai, sendgrid are absent from the bundled index) and 3 testimonials
+(ids 1–3, gradient-initials avatars). Every row contains the word
+"Placeholder" for findability.
+
+**Verified:** public endpoints serve 4 + 3; homepage ISR revalidated in ~40s;
+`id="apis"` / `id="testimonials"` and both nav links (navbar + footer) back in
+SSR HTML.
+
+**Re-run of visual-snapshots:** section-wait now **passes**; the homepage test
+proceeds to pixel comparison and fails only on baseline drift (`Expected 6750px,
+received 6348px`, ratio 0.14) — placeholder copy is more compact than the
+2026-09-15 original. Expected; resolves with real copy + re-baseline.
+
+## Hero-viewport snapshot: investigation + re-baseline
+
+`hero-viewport` failed at 8% pixel drift against the 2026-09-15 baseline. PIL
+diff-band analysis (navbar strip y 15–49, hero body y 115–636, scroll indicator
+y 651–694) matched three committed changes post-baseline: `df2b75c` (Sep 18,
+custom-logo badges), `ec65371` (Sep 23, CTA tracking), `6101948` (Oct 2, **hero
+responsive restructure**: `items-center` row → `flex-col lg:flex-row`, scroll
+indicator moved to a responsive flow element, social icons h-11 → h-10/sm:h-11).
+
+**Verdict: stale baseline, not a regression.** Re-baselined hero-viewport only
+(scoped `--update-snapshots -g "hero section viewport"`); homepage fullPage
+baseline deliberately left stale pending real copy. Determinism check first: the
+hero typewriter is JS-timer-driven (immune to Playwright's animation-disable)
+but its jitter is within the 1% tolerance — confirmed by two consecutive passes
+plus the full suite run.
+
+## Process honesty (DB forensics on the "finished" edit reports)
+
+The real-copy editing pass was reported done twice; both times DB forensics
+showed otherwise. Verified directly via tinker, not the API layer: all 7 rows
+kept their insertion-time `updated_at` (2026-10-03 17:09:10–38), table counts
+unchanged (4 + 3, no new rows), and `max(updated_at)` across **every** content
+table showed no write since 2026-10-01. Also verified the served admin bundle
+on :3001 inlines `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api` (correct local
+backend), ruling out a mis-wired panel. Conclusion: the edits were made against
+a different environment, or never saved. The user confirmed editing elsewhere.
+No re-baseline was performed on placeholder content — deliberately.
+
+## State at close of part
+
+- Working tree (all uncommitted, nothing deployed): marquee refinement
+  (`globals.css`, `skills.jsx`), E2E additions (`skills-autoplay.spec.js`,
+  `helpers.js` marquee-freezing in `loadHomepageForSnapshot`), re-baselined
+  `hero-viewport-chromium-linux.png`.
+- Pending: real copy from the user (edited elsewhere; to be applied here via
+  the admin API) → delete/replace placeholder rows → scoped homepage fullPage
+  re-baseline → final suite run.
+- Known-failing: `visual-snapshots › public homepage` only (stale fullPage
+  baseline, waiting on real copy). Hero-viewport, admin-login pass; admin-panel
+  snapshots skip without ADMIN_* env.

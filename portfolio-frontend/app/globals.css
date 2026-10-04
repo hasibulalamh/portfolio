@@ -206,3 +206,70 @@
     animation: float var(--float-duration) ease-in-out infinite;
   }
 }
+
+/*
+ * Skills marquee — components/portfolio/skills.jsx.
+ *
+ * .skills-marquee          relative container; pause-state hooks live here
+ * .skills-marquee-viewport clips the moving track and is an inline-size
+ *                          container, so card widths in cqw keep the old
+ *                          %-of-viewport sizing math (1/2/4 cards per view)
+ * .skills-marquee-offset   manual arrow nudges land here (own transform
+ *                          layer, so it never fights the animation below)
+ * .skills-marquee-track    the animated track: the filtered list rendered
+ *                          2-8x so exactly half of it is one content period
+ *
+ * The keyframes translate the track from 0 to -50% of its own width — exactly
+ * one content period — which is what makes the loop point pixel-identical to
+ * the start (the pr-4 equals the gap so the period boundary is exact).
+ */
+@keyframes skills-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.skills-marquee-viewport {
+  container-type: inline-size;
+}
+
+.skills-marquee-offset {
+  transform: translateX(var(--marquee-offset, 0px));
+  transition: transform 450ms ease;
+}
+
+.skills-marquee-track {
+  width: max-content;
+  animation: skills-marquee var(--marquee-duration, 24s) linear infinite;
+}
+
+/*
+ * Pause the auto-slide while the pointer rests anywhere over the carousel,
+ * while keyboard focus sits inside it (arrow buttons), while a manual arrow
+ * or touch nudge is settling (data-hold), and whenever the section is
+ * offscreen (data-inview, set by the component's IntersectionObserver).
+ */
+.skills-marquee:hover .skills-marquee-track,
+.skills-marquee:focus-within .skills-marquee-track,
+.skills-marquee[data-hold='true'] .skills-marquee-track,
+.skills-marquee[data-inview='false'] .skills-marquee-track {
+  animation-play-state: paused;
+}
+
+/*
+ * Motion-sensitive users get a static, non-animated list. The arrow nudges
+ * still work — they reposition instantly (no eased transition) instead of
+ * animating.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .skills-marquee-track {
+    animation: none;
+  }
+
+  .skills-marquee-offset {
+    transition: none;
+  }
+}
