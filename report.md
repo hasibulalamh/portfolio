@@ -6027,3 +6027,228 @@ the new `SanctumTokenHygieneTest`; the 9 formerly failing tests now pass.
 This report contains **no** database password, R2 key, token, or connection string.
 The read-only restore used credentials read from the git-ignored `.env` into a
 temporary mode-600 file that was shredded, and no writes were made to `defaultdb`.
+
+---
+
+# Part L — GA4 Tracking Snippet on the Public Site
+
+**Date:** 2026-10-10  
+**Scope:** Add Google Analytics 4 to the public site (`portfolio-frontend`) only, so the
+admin GA4 Summary widget (Part F) reads a real property. Vercel Analytics — which 404s
+`/_vercel/insights/script.js` in the console because the site runs on Render, not
+Vercel — is replaced by `@next/third-parties`, gated so dev and E2E runs never report.
+The measurement ID crosses Render's build boundary through the same ARG/ENV bridge as
+the other `NEXT_PUBLIC_*` values. Committed as `bd1778f` and pushed to `main`, which
+deployed it to Render — the live verification is recorded below. No secret added: the
+GA measurement ID is a public client-side identifier that ships to every browser.
+
+---
+
+## Inspection (read-only, before any change)
+
+| Artifact | Finding |
+| --- | --- |
+| `portfolio-frontend/app/layout.jsx` | imported `Analytics` from `@vercel/analytics/next`; rendered `{process.env.NODE_ENV === 'production' && <Analytics />}` in `<body>` |
+| `portfolio-frontend/Dockerfile` | three stages (deps → builder → runner); `ARG NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_BASE_URL` declared in **deps** and again in **builder**, then exported as `ENV` in the builder before `RUN npm run build` |
+| `portfolio-frontend/next.config.mjs` | only `output: 'standalone'` and `images.unoptimized` — **no `headers()` and no Content-Security-Policy** |
+| middleware | none in the frontend |
+| `render.yaml` | frontend service `envVars` were `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_BASE_URL` |
+| `@next/third-parties` | **not installed** (absent from `package.json`, `package-lock.json` and `node_modules`) |
+
+No CSP exists anywhere in the frontend, so per instruction nothing was changed for
+CSP. The tag needs no allow-list from us; adding a policy now would only risk blocking
+unrelated resources.
+
+---
+
+## Implementation
+
+### 1 — Dependency swap (npm only)
+
+```bash
+npm install @next/third-parties@^16.4.0   # added 2 packages
+npm uninstall @vercel/analytics           # removed 1 package
+```
+
+`package-lock.json` now references `@next/third-parties` ×3 and `@vercel/analytics`
+×0. The pre-existing, unused `pnpm-lock.yaml` was deliberately left untouched.
+
+### 2 — `app/layout.jsx`
+
+```jsx
+import { GoogleAnalytics } from '@next/third-parties/google'
+...
+const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID
+...
+{process.env.NODE_ENV === 'production' && gaMeasurementId ? (
+  <GoogleAnalytics gaId={gaMeasurementId} />
+) : null}
+```
+
+Two independent conditions must both hold — a production build **and** a non-empty
+inlined ID. `next dev`, and the E2E `webServer` builds (which never receive the var),
+render nothing, so no fake pageviews can reach the real property.
+
+### 3 — Build-time bridge (`portfolio-frontend/Dockerfile`)
+
+`NEXT_PUBLIC_*` is inlined by `next build`, and a Render env var that is not
+re-declared as `ARG` is invisible to the build step (the production incident the
+existing comment warns about). `ARG NEXT_PUBLIC_GA_MEASUREMENT_ID` was added at
+**both** declaration sites and appended to the builder `ENV` block:
+
+```dockerfile
+# deps stage
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_BASE_URL
+ARG NEXT_PUBLIC_GA_MEASUREMENT_ID
+
+# builder stage
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_BASE_URL
+ARG NEXT_PUBLIC_GA_MEASUREMENT_ID
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL \
+    NEXT_PUBLIC_GA_MEASUREMENT_ID=$NEXT_PUBLIC_GA_MEASUREMENT_ID
+```
+
+### 4 — `render.yaml`
+
+```yaml
+# Public GA4 measurement ID for the public site only. Consumed at BUILD time
+# like the two vars above (ARG/ENV bridge in the Dockerfile): app/layout.jsx
+# renders the gtag snippet only when this is non-empty and the build is
+# NODE_ENV=production, so dev, E2E runs and the admin panel never report to
+# the property. The ID ships to the browser, so it is public and safe to commit.
+- key: NEXT_PUBLIC_GA_MEASUREMENT_ID
+  value: G-6R3C8THJHS
+```
+
+### Deliberately not touched
+
+The conversion-tracking path (`portfolio-frontend/lib/track.js`, `/api/track`), all
+Skills/marquee code, and everything in `portfolio-admin` — the admin keeps its own
+`@vercel/analytics` import. The change is public-site-only, as scoped.
+
+---
+
+## Verification
+
+### Unit tests
+
+```
+npm test  →  Test Files 5 passed (5) | Tests 85 passed (85)
+```
+
+### Build A — `NEXT_PUBLIC_GA_MEASUREMENT_ID=G-6R3C8THJHS npm run build`
+
+Exit 0; `/` prerendered static. `.next/server/app/index.html` (53,506 bytes) contains
+the gtag URL carrying the ID:
+
+```html
+<link rel="preload" href="https://www.googletagmanager.com/gtag/js?id=G-6R3C8THJHS" as="script"/>
+...{"gaId":"G-6R3C8THJHS"}   <!-- RSC payload for the client <GoogleAnalytics> -->
+```
+
+The served page (`next start`, then `curl`) carries the same gtag URL. Because
+`next/script` uses the default `afterInteractive` strategy, the literal `<script>` is
+injected at hydration rather than shipped in the server HTML — so the served page was
+also loaded in headless Chromium with **all GA hosts blocked**:
+
+```json
+{
+  "gaScriptSrc": "https://www.googletagmanager.com/gtag/js?id=G-6R3C8THJHS",
+  "initScriptText": "window['dataLayer'] = window['dataLayer'] || []; function gtag(){...} gtag('js', new Date()); gtag('config', 'G-6R3C8THJHS');",
+  "gtagType": "function",
+  "dataLayerLength": 2,
+  "blockedGaRequests": 1
+}
+```
+
+The tag and init snippet are really in the DOM, and the single request they made was
+**aborted** — so verification sent **zero** hits to the live property.
+
+### Build B — var unset/blank
+
+Exit 0. `.next/server/app/index.html`:
+
+| String | Occurrences |
+| --- | --- |
+| `googletagmanager` | 0 |
+| `G-6R3C8THJHS` | 0 |
+| `_next-ga` | 0 |
+
+### E2E — `npx playwright test tests/e2e/visual-snapshots.spec.js`
+
+```
+✓ public homepage (35.6s)
+✘ public homepage - hero section viewport      (49,159 px / 6%)
+✓ admin login page (6.3s)
+- admin hero form / messages inbox / settings  (skipped: no ADMIN_EMAIL/PASSWORD)
+2 passed, 1 failed, 3 skipped
+```
+
+The homepage snapshot — the one this change could plausibly disturb, since it adds a
+node under `<body>` — passes unchanged. `hero-viewport` is the **known unrelated
+failure** from Part K (dev hero content vs. the Oct-2 baseline: 49,159 px here vs.
+48,736 px there); its baseline was deliberately **not** re-generated. The webServer
+builds ran without the GA var, so the E2E session emitted no analytics traffic either.
+
+---
+
+## Deploy & live verification (follow-up)
+
+Committed as `bd1778f` and pushed to `origin/main`, which triggered the Render rebuild.
+Within ~120 s the live site was serving the tag (pre-deploy baseline: 0 references):
+
+```
+$ curl -sL https://hasibulalam.com/ | grep -o "googletagmanager.com/gtag/js?id=G-6R3C8THJHS"
+https://www.googletagmanager.com/gtag/js?id=G-6R3C8THJHS
+```
+
+The served HTML carries it as the `next/script` preload link, and no `_vercel`
+references remain:
+
+```html
+<link rel="preload" href="https://www.googletagmanager.com/gtag/js?id=G-6R3C8THJHS" as="script"/>
+```
+
+A real headless-Chromium visit to the production domain then loaded
+`gtag/js?id=G-6R3C8THJHS` (HTTP 200) and fired a pageview that
+`google-analytics.com/g/collect` accepted with **HTTP 204**:
+
+```
+.../g/collect?v=2&tid=G-6R3C8THJHS...&en=page_view&dl=https%3A%2F%2Fhasibulalam.com%2F  -> 204
+```
+
+GA4 **Realtime** (last 30 min) confirms the property received the hit:
+
+| Realtime event | Count |
+| --- | --- |
+| `first_visit` | 1 |
+| `page_view` | 1 |
+| `session_start` | 1 |
+
+The admin widget's exact call — `GA4Service::getSummary()` over the 30-day window with
+the cache cleared — read **0 / 0 / 0** immediately afterwards. That is GA4's standard
+Data API processing latency, not a tag failure: Realtime already shows the pageview,
+and the 30-day aggregate picks up today's data once GA4 publishes it (the widget then
+caches the new figure for one hour). Ingestion is therefore proven at the
+collect + Realtime level; the dashboard figure will follow.
+
+---
+
+## Files changed
+
+| File | Change |
+| --- | --- |
+| `portfolio-frontend/app/layout.jsx` | drop `@vercel/analytics`; add the gated `<GoogleAnalytics>` |
+| `portfolio-frontend/package.json` | `-@vercel/analytics`, `+@next/third-parties@^16.4.0` |
+| `portfolio-frontend/package-lock.json` | npm lock update for the swap |
+| `portfolio-frontend/Dockerfile` | `ARG`/`ENV NEXT_PUBLIC_GA_MEASUREMENT_ID` in deps + builder |
+| `render.yaml` | `NEXT_PUBLIC_GA_MEASUREMENT_ID: G-6R3C8THJHS` |
+
+## Safety
+
+No credential is added or exposed: the GA4 measurement ID is a public client-side
+identifier that ships to every browser. This report contains no database password, R2
+key, token, or connection string.
