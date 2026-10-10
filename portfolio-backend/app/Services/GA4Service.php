@@ -7,6 +7,7 @@ use Google\Analytics\Data\V1beta\Client\BetaAnalyticsDataClient;
 use Google\Analytics\Data\V1beta\DateRange;
 use Google\Analytics\Data\V1beta\Metric;
 use Google\Analytics\Data\V1beta\RunReportRequest;
+use Google\Analytics\Data\V1beta\RunReportResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -94,20 +95,7 @@ class GA4Service
         $cleanPropertyId = preg_replace('#^properties/#', '', (string) $propertyId);
 
         try {
-            $response = $this->client($credentialsPath)->runReport(
-                (new RunReportRequest)
-                    ->setProperty('properties/'.$cleanPropertyId)
-                    ->setDateRanges([
-                        (new DateRange)
-                            ->setStartDate(now()->subDays((int) config('analytics.period_days', 30))->toDateString())
-                            ->setEndDate('today'),
-                    ])
-                    ->setMetrics([
-                        new Metric(['name' => 'activeUsers']),
-                        new Metric(['name' => 'sessions']),
-                        new Metric(['name' => 'screenPageViews']),
-                    ])
-            );
+            $response = $this->runReport($credentialsPath, $cleanPropertyId);
 
             // With no dimensions the report is a single aggregate row (or none
             // at all on a brand-new property with no traffic). Totals are
@@ -167,12 +155,39 @@ class GA4Service
     }
 
     /**
+     * Issue the single aggregate report through the official client.
+     *
+     * Kept in its own method so tests can replace the network call wholesale
+     * (the test seam — see GA4EndpointTest): the generated client class is
+     * `final`, so `client()` cannot be mocked, but this method can.
+     *
+     * @param  string  $propertyId  Already stripped of any "properties/" prefix.
+     */
+    protected function runReport(string $credentialsPath, string $propertyId): RunReportResponse
+    {
+        return $this->client($credentialsPath)->runReport(
+            (new RunReportRequest)
+                ->setProperty('properties/'.$propertyId)
+                ->setDateRanges([
+                    (new DateRange)
+                        ->setStartDate(now()->subDays((int) config('analytics.period_days', 30))->toDateString())
+                        ->setEndDate('today'),
+                ])
+                ->setMetrics([
+                    new Metric(['name' => 'activeUsers']),
+                    new Metric(['name' => 'sessions']),
+                    new Metric(['name' => 'screenPageViews']),
+                ])
+        );
+    }
+
+    /**
      * Build the official client bound to the service-account credentials.
      *
-     * Kept in its own method so tests can swap the client wholesale (this is
-     * the test seam — see GA4EndpointTest) and so the transport gets bounded
-     * timeouts (HealthCheckService does the same for its R2 probe) instead of
-     * the SDK's default unlimited wait.
+     * The generated client class is `final`, so tests replace the call at the
+     * `runReport()` seam rather than mocking this construction. The transport
+     * gets bounded timeouts (HealthCheckService does the same for its R2 probe)
+     * instead of the SDK's default unlimited wait.
      */
     protected function client(string $credentialsPath): BetaAnalyticsDataClient
     {

@@ -48,9 +48,16 @@ return [
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
     |
+    | Default is 7 days (10080 minutes). A blank or non-positive value falls
+    | back to the default rather than disabling expiry, so a typo can never
+    | silently make admin tokens immortal. Expired tokens are pruned
+    | opportunistically at login (see AuthService::pruneTokens) because
+    | production runs on a cron-less free tier with no scheduled
+    | `sanctum:prune-expired`.
+    |
     */
 
-    'expiration' => null,
+    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION_MINUTES', 10080) ?: 10080,
 
     /*
     |--------------------------------------------------------------------------

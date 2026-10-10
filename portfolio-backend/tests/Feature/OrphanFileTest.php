@@ -19,10 +19,14 @@ use Tests\TestCase;
  * The orphan-file pair end to end: the scan (GET) and the explicit delete
  * (DELETE).
  *
- * Both run against Storage::fake('r2') — the local .env has real R2
- * credentials, so without the fake these tests would list and delete real
- * Cloudflare objects. The fake also makes the grace period trivial to
- * exercise by touching file mtimes directly.
+ * Both run against Storage::fake('r2') — so they never list or delete real
+ * Cloudflare objects. The fake also makes the grace period trivial to exercise
+ * by touching file mtimes directly.
+ *
+ * The disk selection is made hermetic in setUp(): UploadService::disk() returns
+ * 'r2' only when key + bucket + endpoint are all configured, and the local .env
+ * intentionally has those blank. Throwaway in-memory values are set so the real
+ * code path is exercised against the fake disk regardless of the environment.
  *
  * Stored reference values are built with r2Url() because the normaliser
  * matches against the configured R2 public base, whatever it is.
@@ -34,6 +38,17 @@ class OrphanFileTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Pin a complete, entirely fake R2 configuration in memory so
+        // UploadService::disk() resolves to 'r2' whether the local .env has
+        // real R2 credentials or (as in dev isolation) blank ones. These are
+        // not secrets and never leave the test process: Storage::fake('r2')
+        // below is what every read/write actually hits — no network call.
+        config()->set('filesystems.disks.r2.key', 'test-access-key');
+        config()->set('filesystems.disks.r2.secret', 'test-secret-key');
+        config()->set('filesystems.disks.r2.bucket', 'test-bucket');
+        config()->set('filesystems.disks.r2.endpoint', 'https://r2.example.test');
+        config()->set('filesystems.disks.r2.url', 'https://assets.example.test');
 
         Storage::fake('r2');
         Storage::fake('public');

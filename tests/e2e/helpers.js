@@ -346,6 +346,27 @@ const HOMEPAGE_SECTION_IDS = [
 ];
 
 /**
+ * Sections whose presence depends on there being content for them.
+ *
+ * The API Showcase and Testimonials sections are content-gated in
+ * `app/page.jsx`: with no api_showcases/testimonials rows they are filtered out
+ * of the render entirely — and so is their navbar/footer link, because the
+ * links are derived from the same visible-sections list. A production dataset
+ * with those tables intentionally empty therefore serves a page without these
+ * two ids, which is correct, not a regression.
+ *
+ * Keep them out of the "all sections served" wait so an empty dataset cannot
+ * make the guard spin until its timeout and fail. The visual snapshot spec
+ * asserts presence XOR absence for each of them instead.
+ */
+const OPTIONAL_HOMEPAGE_SECTION_IDS = ['apis', 'testimonials'];
+
+/** Sections that must be present regardless of dataset content. */
+const REQUIRED_HOMEPAGE_SECTION_IDS = HOMEPAGE_SECTION_IDS.filter(
+  (id) => !OPTIONAL_HOMEPAGE_SECTION_IDS.includes(id),
+);
+
+/**
  * Force every homepage section visible via the admin API.
  *
  * The homepage snapshot baselines show every section. The
@@ -402,7 +423,10 @@ async function ensureAllSectionsVisible(page) {
 }
 
 /**
- * Wait until the public server actually serves a homepage with every section.
+ * Wait until the public server actually serves a homepage with every required
+ * section (see REQUIRED_HOMEPAGE_SECTION_IDS — content-gated sections like the
+ * API Showcase and Testimonials are excluded, since an empty dataset hides them
+ * by design).
  *
  * Once a render with a section hidden lands in Next's ISR cache it keeps being
  * served for the 60s revalidate window — including to the FIRST request after
@@ -431,7 +455,7 @@ async function waitForAllSectionsServed(page, options = {}) {
 
   const deadline = Date.now() + timeout;
   let waited = false;
-  let missing = HOMEPAGE_SECTION_IDS;
+  let missing = REQUIRED_HOMEPAGE_SECTION_IDS;
 
   while (Date.now() < deadline) {
     let html = '';
@@ -442,7 +466,11 @@ async function waitForAllSectionsServed(page, options = {}) {
       // Server warming up / restarting — keep polling until the deadline.
     }
 
-    missing = HOMEPAGE_SECTION_IDS.filter((id) => !html.includes(`id="${id}"`));
+    // Only required sections are waited for: a content-gated section that is
+    // legitimately empty never appears and must not fail this guard.
+    missing = REQUIRED_HOMEPAGE_SECTION_IDS.filter(
+      (id) => !html.includes(`id="${id}"`),
+    );
     if (missing.length === 0) {
       if (waited) {
         console.log(
@@ -456,7 +484,7 @@ async function waitForAllSectionsServed(page, options = {}) {
   }
 
   throw new Error(
-    `Homepage never rendered all sections within ${timeout}ms ` +
+    `Homepage never rendered every required section within ${timeout}ms ` +
     `(still missing: ${missing.join(', ')}). ` +
     'Is the backend up and every section_visibility row enabled?',
   );
@@ -536,4 +564,5 @@ module.exports = {
   waitForAllSectionsServed,
   settleFullPageContent,
   loadHomepageForSnapshot,
+  OPTIONAL_HOMEPAGE_SECTION_IDS,
 };

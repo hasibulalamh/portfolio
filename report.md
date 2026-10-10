@@ -5571,3 +5571,459 @@ No re-baseline was performed on placeholder content — deliberately.
 - Known-failing: `visual-snapshots › public homepage` only (stale fullPage
   baseline, waiting on real copy). Hero-viewport, admin-login pass; admin-panel
   snapshots skip without ADMIN_* env.
+
+---
+
+# Part J — Local Dev Database & R2 Isolation (local no longer shares production DB)
+
+**Date:** 2026-10-09  
+**Scope:** Local-only env changes. Production (Render/Vercel/Aiven `defaultdb`, prod R2
+bucket) untouched — verified by row-count diff. No secrets in this or any committed file.
+
+---
+
+## The problem, confirmed by inspection
+
+The local `portfolio-backend/.env` pointed at the production Aiven MySQL server and
+`DB_DATABASE=defaultdb`, and also held the production R2 credentials. Every local
+`php artisan serve` boot, admin-panel edit, Playwright E2E run and presubmit suite was
+reading AND writing production data and the production object store. Reported first,
+changed second: the full masked key inventory was captured (DB_* ×5, R2_* ×5, AWS_* ×4,
+RESEND_API_KEY, GA4_PROPERTY_ID, GOOGLE_APPLICATION_CREDENTIALS, MAIL_* ×4, SESSION_* ×5,
+FILESYSTEM_DISK, CACHE_STORE) before any edit.
+
+## What changed (all in git-ignored `.env` files, masked)
+
+| Key (local `.env`) | Before | After |
+| --- | --- | --- |
+| `DB_DATABASE` | `defaultdb` | `portfolio_dev` |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | prod values | blanked |
+| `R2_BUCKET` / `R2_ENDPOINT` / `R2_URL` / `R2_REGION` | prod values | blanked |
+| `FILESYSTEM_DISK` | `r2` | `public` |
+| `MAIL_MAILER` | (SMTP/resend transport) | `log` |
+| `RESEND_API_KEY` | real key | blanked |
+
+Keys deliberately kept: `DB_HOST/PORT/USERNAME/PASSWORD` (same server, new database —
+the credential is scoped per-user, creating a second one would be a larger change),
+`GA4_PROPERTY_ID` + service-account path (GA4 Data API is read-only; it cannot mutate
+any production state).
+
+A pre-change backup of the original `.env` exists locally (`/tmp/env_backup_*` style
+path, git-ignored by location). Hostnames and credential values are intentionally not
+duplicated here.
+
+## How the isolation works
+
+- **DB:** `config/database.php` reads `DB_DATABASE` at config load. Aiven
+  credentials allow schema creation within the user's grants.
+- **Uploads:** `UploadService::disk()` (and `OrphanFileService` through it) returns
+  `r2` only when R2 key+bucket+endpoint are ALL configured; with them blanked it
+  resolves to `public` → `storage/app/public`. Verified live via tinker after the
+  change: `public`.
+- **Mail:** `MAIL_MAILER=log` writes the rendered message to the log; Resend never
+  sees a local request.
+- **Tests were already safe:** `phpunit.xml` pins `DB_DATABASE=portfolio_backend_test`,
+  `APP_ENV=testing`, array cache/session/mail — RefreshDatabase migrates that disposable
+  DB per run, and nothing reads the dev DB. No test-suite changes were needed or made
+  (one test file noted below only as *impacted observation*, not edited).
+
+## Creating `portfolio_dev` + one-time content copy (production read-only)
+
+Baseline before anything: 25-table `information_schema` snapshot of `defaultdb`
+(actually `information_schema.table_rows` estimates, exact `COUNT(*)` values on the
+content tables). Exact counts (production truth):
+`about=0, hero=1, meeting_requests=1, projects=4, section_visibility=8, skills=19,
+skill_categories=4, timeline_items=2, users=1, personal_access_tokens=121,
+click_events=14`, everything else 0.
+
+Then, using the same credentials (the one thing the user's grants allow):
+
+1. `CREATE DATABASE IF NOT EXISTS portfolio_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+   — ran clean, with a follow-up `SHOW CREATE DATABASE` verification.
+2. Repointed local `.env` to `DB_DATABASE=portfolio_dev`.
+3. `php artisan migrate --seed --force` — all migrations applied, seeders
+   (AdminUserSeeder, SingletonSeeder, `SectionVisibilitySeeder`) ran clean.
+4. Content copy: read-only `mysqldump --single-transaction --no-create-info` of ONLY
+   the content tables from `defaultdb` — `about, contact_info, contact_messages,
+   hero, meeting_requests, project_details, projects, section_visibility, settings,
+   skill_categories, skills, timeline_items` — imported into `portfolio_dev` with
+   `REPLACE INTO` (seeders had created conflicting singleton rows; production values
+   deliberately win). EXCLUDED by design: `users`, `personal_access_tokens`,
+   `sessions`, `click_events`, `jobs/failed_jobs/job_batches`, `cache*`, `migrations`,
+   `password_reset_tokens` (test DB only), `testimonials` + `api_showcases`
+   (intentionally empty).
+
+## Verification
+
+- **Production untouched, proven:** the 25-table `defaultdb` snapshot was diffed
+  against live state at every checkpoint — (a) after migrate+seed into portfolio_dev,
+  (b) after content-dump re-check, (c) after `php artisan serve` + real
+  `GET /api/settings` traffic. All three diffs were empty. Exact content row counts
+  still match the global baseline (`hero=1, projects=4, skills=19, section_visibility=8,
+  timeline_items=2, users=1, personal_access_tokens=121, click_events=14`). The only
+  operation ever run against `defaultdb`: SELECT/CREATE DATABASE (schemas only, no
+  object writes, no data writes, no reads of credential tables).
+- **Dev DB has real content:** exact `COUNT(*)` on `portfolio_dev` after import:
+  `about=1, contact_info=1, hero=1, settings=1, projects=4, skills=20,
+  skill_categories=5, section_visibility=8, timeline_items=3, meeting_requests=2,
+  users=1`. Dev counts exceed production for `skills` (20 vs 19),
+  `skill_categories` (5 vs 4) and `timeline_items` (3 vs 2) because seeder rows
+  deliberately coexist with the dumped production rows — dev-only by design.
+- **Uploads:** tinker-verified `UploadService::disk()` now resolves to `public`.
+- **Live DB check:** `GET /api/settings` through `php artisan serve` returned real
+  content from `portfolio_dev` (and the post-traffic reduced snapshot still showed
+  `defaultdb` unchanged).
+- **PHPUnit suites (local dev DB, backend):** Unit **209 passed** (485 assertions);
+  Feature files 1–10 (AdminReply, ChaosInjection, ClickTracking, ContactMessage
+  ReplyEndpoint, CorsPolicy, FileUpload, GA4Endpoint, HealthCheck, MeetingRequest
+  ReplyEndpoint, MeetingRequestReplyMail) + Feature files 11–15 (OrphanFile,
+  ProjectCrud, PublicSubmission, SectionVisibility, SecurityHeaders):
+  **138 passed**; Regression+Contract **35 passed** (333 assertions). Total
+  482 backend tests in separate sequential per-suite runs.
+- **Frontend/admin vitest:** frontend **85 passed** (5 files); admin **78 passed**
+  (7 files).
+
+## Remaining risks / known failures
+
+- **`test_second_service_call_within_cache_window_does_not_hit_the_ga4_client_again()`
+  (GA4EndpointTest)** fails — `Undefined array key "visitors"` after an 87–103 s real
+  GA4 wait — because the test uses a partial mock and the local `.env`'s real
+  `GA4_PROPERTY_ID`/service-account path lets the client leak through to the real
+  GA4 API. A/B-tested against the original `.env`: identical failure. Pre-existing,
+  NOT caused by this change. Needs: pin a fake `analytics.property_id` in the test
+  (or a sandboxed GA4 env in phpunit.xml) so the partial mock cannot reach the real
+  API.
+- **OrphanFileTest (8 failures)** — expected consequence of R2 isolation, not a bug.
+  The suite `Storage::fake('r2')` and seeds the fake *r2* disk, relying on real R2
+  creds making `disk()` resolve to `r2`. With R2 blanked, `disk()` resolves to
+  `public`, and the test's `public` fake is empty, so scans report 0 files where 1
+  is expected. Left unedited (out of scope for this part). Fix would be in the
+  test `setUp()`: set `config()` fake key/bucket/endpoint so `disk()` resolves to
+  `r2` while still hitting the fake — no secrets, purely in-memory. The test file
+  itself is committed code, deliberately not touched by this env-isolation part.
+- **HealthCheckService storage check:** locally `/api/health` will report storage
+  `down` (R2 config incomplete → overall `degraded`). By design here; production
+  (Render) has its own env and is unaffected. Admin UI will show degraded health
+  — acceptable for a dev environment; flag if it needs a friendlier local-only
+  messaging instead.
+- **`defaultdb` still reachable from local .env's DB_USER** — dev traffic now goes
+  to `portfolio_dev`, but nothing enforces future discipline: a hard-coded
+  `defaultdb` in any tool/script that skips `.env` could still reach prod. Real
+  login-free guarantee would be Aiven-side (revoke `defaultdb` privileges on dev
+  identity, or use a separate restricted user) — documented as follow-up, not
+  done (out of agreed scope: no privileged/production-server changes).
+- `/api/settings` was verified against `portfolio_dev` through the API with real
+  HTTP traffic plus a direct DB `COUNT(*)` cross-check — the served record matched
+  the dev singleton.
+
+---
+
+# Part K — Hermetic Tests, Sanctum Token Hygiene & Optional-Section E2E
+
+**Date:** 2026-10-09  
+**Scope:** Two test files made independent of the local `.env`; finite Sanctum token
+lifetime with opportunistic pruning at login; the homepage visual spec treats the
+content-gated API Showcase / Testimonials sections as optional and was re-baselined
+against `portfolio_dev`. No deploy, no commit. No secrets in this or any committed file.
+
+---
+
+## Task 1 — Hermetic `OrphanFileTest` + `GA4EndpointTest`
+
+### Baseline (both files, one PHPUnit process, local `.env`)
+
+```
+Tests: 19, Assertions: 81, Errors: 1, Failures: 8, Risky: 1.   (wall ~3m14s)
+```
+
+- `OrphanFileTest` — 8 failures, every one a consequence of `UploadService::disk()`
+  resolving to `public` because the local `.env` deliberately blanks the R2 values.
+- `GA4EndpointTest` — `test_second_service_call_within_cache_window_...` errored with
+  `Undefined array key "visitors"` after a real GA4 round-trip (~90s).
+
+### 1a — `OrphanFileTest`
+
+`setUp()` now pins a complete throwaway R2 configuration in memory before the fakes:
+
+```php
+config()->set('filesystems.disks.r2.key', 'test-access-key');
+config()->set('filesystems.disks.r2.secret', 'test-secret-key');
+config()->set('filesystems.disks.r2.bucket', 'test-bucket');
+config()->set('filesystems.disks.r2.endpoint', 'https://r2.example.test');
+config()->set('filesystems.disks.r2.url', 'https://assets.example.test');
+
+Storage::fake('r2');
+Storage::fake('public');
+```
+
+No secrets, no network: the real `disk()` selection logic still runs and resolves to
+`'r2'`, while every read/write hits the `Storage::fake('r2')` local directory. The
+same `.url` is what `r2Url()` builds stored references from. Class docblock updated
+to say the config is pinned in-memory rather than coming from `.env`.
+
+### 1b — `GA4EndpointTest`
+
+Two layered bugs, found by isolating the test from the DB with a throwaway script:
+
+1. **Wrong namespace.** The test imported
+   `Google\Analytics\Data\V1beta\BetaAnalyticsDataClient`, but the real class lives at
+   `Google\Analytics\Data\V1beta\Client\BetaAnalyticsDataClient` (the `Client`
+   subdirectory — the service had already been fixed for this in commit `3ab42da`,
+   the test had not). `Mockery::mock()` happily mocked the non-existent name, so
+   `client()` returned an object that failed the real return type — a `TypeError`
+   swallowed by the service's catch and surfaced as `ga4_unavailable`.
+2. **The real client class is `final`.** Even with the correct import,
+   `Mockery::mock(BetaAnalyticsDataClient::class)` throws
+   *“marked final and its methods cannot be replaced.”* So the `client()` seam was
+   never actually mockable.
+
+Fix, keeping tests offline and fast:
+
+- Correct the import; mock the call, not the final class.
+- `GA4Service` gains a small protected `runReport(string $credentialsPath, string
+  $propertyId): RunReportResponse` that wraps the single `client()->runReport(...)`
+  call. `fetchSummary()` now calls `runReport(...)`. Behaviour is byte-for-byte the
+  same; the method is the new (mockable) test seam. `client()` is untouched.
+- `setUp()` pins a **fake credentials file that actually exists** —
+  `sys_get_temp_dir()/ga4-test-<uniqid>.json` containing `{}` — and `tearDown()`
+  deletes it. `analytics.property_id`, `analytics.credentials_path`,
+  `analytics.cache_ttl_seconds` and `analytics.period_days` are all pinned, so the
+  suite cannot depend on (or fall through to) the local `.env` GA4 values.
+- The per-test `config()->set('analytics.credentials_path', base_path('composer.json'))`
+  overrides are gone; nothing points at a real secret file.
+
+### Result
+
+```
+Tests: 19, Assertions: 101, OK (19 tests, 101 assertions)
+```
+
+`GA4EndpointTest` per-test times are now **~2.5–3.7s** each — the cache test no longer
+waits on Google. (Total run time is still ~3m, dominated by `RefreshDatabase`
+migrating the remote test database.)
+
+### A/B proof — independent of `.env`
+
+Both files were run in one process under two deliberate `.env` shapes, injected as
+process env (which Laravel's immutable dotenv honours over `.env`):
+
+| R2 / GA4 env | Result |
+| --- | --- |
+| All blanked (`R2_*` empty, `GA4_PROPERTY_ID` empty, credentials empty) | **OK (19 tests, 101 assertions)** |
+| All set (dummy non-secret R2 values; dummy `GA4_PROPERTY_ID`; credentials path set) | **OK (19 tests, 101 assertions)** |
+
+The current local `.env` (R2 blank, GA4 set) also passes, i.e. the mixed case. The
+fake values above are placeholders; no real credential is used or asserted on.
+
+---
+
+## Task 2 — Sanctum Token Hygiene
+
+### Finite lifetime
+
+`config/sanctum.php`:
+
+```php
+'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION_MINUTES', 10080) ?: 10080,
+```
+
+7 days by default; a blank or non-positive value falls back to the default rather
+than disabling expiry (a typo cannot silently make tokens immortal). Verified live:
+`sanctum.expiration=10080`. Documented in `.env.example` as
+`SANCTUM_TOKEN_EXPIRATION_MINUTES=10080`.
+
+### Opportunistic pruning at login (no cron needed)
+
+Production is on Render's free tier with no cron, so `sanctum:prune-expired` cannot
+be scheduled. `App\Services\AuthService::attemptLogin()` now mints the token, then
+calls a few-line `pruneTokens(User $user)`:
+
+```php
+$expirationMinutes = (int) config('sanctum.expiration');
+
+$user->tokens()
+    ->where(function ($query) use ($expirationMinutes) {
+        if ($expirationMinutes > 0) {
+            $query->where('created_at', '<=', now()->subMinutes($expirationMinutes));
+        }
+        $query->orWhere(function ($query) {
+            $query->whereNotNull('expires_at')->where('expires_at', '<=', now());
+        });
+    })
+    ->delete();
+
+$survivors = $user->tokens()->orderByDesc('created_at')->orderByDesc('id')
+    ->limit(self::MAX_TOKENS_PER_USER)->pluck('id');
+
+$user->tokens()->whereNotIn('id', $survivors)->delete();
+```
+
+The expiry test mirrors Sanctum 4.3.3's own `Guard::isValidAccessToken()` check
+(configured lifetime against `created_at`, plus any explicit `expires_at`). The new
+token is created *before* pruning, so the just-started session is always among the
+survivors; `MAX_TOKENS_PER_USER = 5` caps pile-up.
+
+### Admin 401 handling (inspected, unchanged)
+
+`portfolio-admin/lib/api.js` has a response interceptor: any non-`/login` 401 clears
+`auth_token` + `admin_user` from `localStorage` and sets `window.location.href = '/login'`.
+The login endpoint is exempt so a wrong password still shows its toast. The admin
+shell (`app/admin/layout.jsx`) treats a 401 from `/admin/me` as definitive and does
+not retry (only NETWORK/SERVER are transient). So expired tokens redirect cleanly to
+login — no change was required there.
+
+### Tests
+
+New `tests/Feature/SanctumTokenHygieneTest.php` (back-dates `created_at`, so no test
+waits real time):
+
+| Test | Proves |
+| --- | --- |
+| `test_login_removes_expired_tokens_and_keeps_active_ones` | 30d/8d tokens deleted on login; 6d/1d tokens survive; the new token authenticates |
+| `test_login_caps_stored_tokens_at_five` | 7 active tokens → exactly 5 after login, including the new one |
+| `test_logout_revokes_only_the_current_token` | logout deletes only the request's token; the other session still authenticates |
+
+Result, with the existing `AuthServiceTest`:
+
+```
+OK (6 tests, 19 assertions)
+```
+(new file alone: `OK (3 tests, 15 assertions)`.)
+
+### ⚠️ What happens to a currently-logged-in session
+
+When the finite expiry takes effect, **any token created more than 7 days ago becomes
+invalid** (Sanctum compares the token's `created_at` to the configured lifetime).
+Concretely:
+
+- A session whose token is **older than 7 days** will start receiving `401`s; the
+  admin frontend clears its stored token and redirects to `/login`. **You re-login
+  one time.**
+- A session whose token is **younger than 7 days** is unaffected and keeps working.
+- Old rows are not silently resurrected; they are removed the next time that user
+  logs in (prune step 1). The tokens table stops growing once each login keeps at
+  most 5 per user.
+
+There is no migration or mass-revoke: this is purely the guard now rejecting tokens
+past their lifetime, so the transition is a single sign-in for the affected session.
+
+---
+
+## Task 3 — Optional-Section E2E for the Public Homepage
+
+### Why it was failing
+
+`tests/e2e/helpers.js`'s `waitForAllSectionsServed()` required **all eight**
+`HOMEPAGE_SECTION_IDS`, including `apis` and `testimonials`. But `app/page.jsx` gates
+those two on `hasContent` (`apiShowcases.length > 0` / `testimonials.length > 0`) and
+derives the navbar/footer links from the same visible list. With the tables empty,
+the section and its link both legitimately disappear — so the guard polled for 100s
+and threw.
+
+### Changes
+
+- `helpers.js`: added `OPTIONAL_HOMEPAGE_SECTION_IDS = ['apis', 'testimonials']` and
+  `REQUIRED_HOMEPAGE_SECTION_IDS` (the eight minus those two). `waitForAllSectionsServed()`
+  now waits only on required sections; exported the optional list.
+- `visual-snapshots.spec.js` (`public homepage`): asserts the invariant both ways
+  before the screenshot —
+
+  ```js
+  for (const id of OPTIONAL_HOMEPAGE_SECTION_IDS) {
+    const section = page.locator(`#${id}`);
+    const links = page.locator(`a[href="#${id}"]`);
+    if ((await section.count()) > 0) {
+      await expect(section).toBeVisible();
+      await expect(links.first()).toBeVisible();
+    } else {
+      await expect(links).toHaveCount(0);
+    }
+  }
+  ```
+
+  i.e. rendered ⇒ section **and** link visible; empty ⇒ no section **and** no
+  dangling navbar/footer link.
+
+### `portfolio_dev` state and read-only restore
+
+The task premise assumed dev had content apart from the two empty tables. In fact the
+dev content tables were empty: `skills=0, skill_categories=0, projects=0,
+project_details=0, timeline_items=0, api_showcases=0, testimonials=0, users=0`
+(only `hero`, `about`, `settings`, `section_visibility` present). With those empty the
+homepage renders only Home/About/Contact and the required-section guard cannot pass.
+
+With your approval, content was restored **read-only** from production `defaultdb`
+using the same method as Part J: `mysqldump --single-transaction --no-create-info
+--replace --set-gtid-purged=OFF` of only `skill_categories, skills, projects,
+timeline_items`, imported into `portfolio_dev`. `api_showcases` and `testimonials`
+were left at 0 on purpose. Credentials came from the git-ignored `.env` via a
+mode-600 temp defaults file that was shredded afterwards; **no write of any kind was
+made to `defaultdb`**. The dev admin (`info@hasib.com`) was re-seeded locally with
+`AdminUserSeeder`.
+
+Resulting `portfolio_dev` counts: `skill_categories=5, skills=20, projects=4,
+timeline_items=3, api_showcases=0, testimonials=0, users=1`. The served homepage then
+contained `home, about, skills, projects, journey, contact` and **no** `apis` /
+`testimonials` ids and no `href="#apis"` / `href="#testimonials"` links.
+
+### Re-baseline and stability proof
+
+```
+npx playwright test tests/e2e/visual-snapshots.spec.js -g "public homepage$" --update-snapshots
+  → homepage-chromium-linux.png is re-generated, 1 passed (50.8s)
+npx playwright test tests/e2e/visual-snapshots.spec.js -g "public homepage$"   (run 1)
+  → 1 passed (39.9s)
+npx playwright test tests/e2e/visual-snapshots.spec.js -g "public homepage$"   (run 2)
+  → 1 passed (47.5s)
+```
+
+The re-baselined `homepage-chromium-linux.png` is 1,532,671 bytes (was 1,669,504) —
+the shorter page reflects the intentionally empty API Showcase / Testimonials
+sections. Two consecutive runs pass, with the XOR assertions exercising the
+“absent” branch for both sections.
+
+### Out-of-scope finding — `hero-viewport`
+
+Running the whole spec, the `public homepage - hero section viewport` test fails
+against its Oct-2 baseline: **48,736 px (6%)** differ, deterministically. This is a
+dev-vs-production **hero content** difference (the seeded dev hero text/roles differ
+from what the baseline captured) — not code changed by this part. That baseline was
+left untouched rather than silently re-baselined, so the stability proof above is
+scoped to the re-baselined `homepage` snapshot.
+
+---
+
+## Final Verification
+
+| Suite | Before | After |
+| --- | --- | --- |
+| PHPUnit — full suite, one sequential process | 382 passed + **9 env-dependent failures** (391) | **OK — 394 tests, 1423 assertions, 0 failures/errors** |
+| frontend vitest | 85 passed (5 files) | **85 passed (5 files)** |
+| admin vitest | 78 passed (7 files) | **78 passed (7 files)** |
+| E2E `visual-snapshots.spec.js` homepage snapshot | failing (guard timed out) | **passes; stable across 2 consecutive runs** |
+
+The full PHPUnit suite was run as a single process (`php vendor/bin/phpunit`,
+exit 0); its ~20m wall time is dominated by `RefreshDatabase` migrating the remote
+test database, not by the tests themselves. The +3 tests vs the previous total are
+the new `SanctumTokenHygieneTest`; the 9 formerly failing tests now pass.
+
+## Files changed
+
+| File | Change |
+| --- | --- |
+| `portfolio-backend/tests/Feature/OrphanFileTest.php` | pin fake in-memory R2 config in `setUp()` |
+| `portfolio-backend/tests/Feature/GA4EndpointTest.php` | correct import; fake temp credentials file; mock `runReport()` seam |
+| `portfolio-backend/app/Services/GA4Service.php` | extract protected `runReport()` seam (no behaviour change) |
+| `portfolio-backend/config/sanctum.php` | finite `expiration` via `SANCTUM_TOKEN_EXPIRATION_MINUTES` (default 10080) |
+| `portfolio-backend/app/Services/AuthService.php` | `pruneTokens()` at login (expired + keep newest 5) |
+| `portfolio-backend/.env.example` | document `SANCTUM_TOKEN_EXPIRATION_MINUTES` |
+| `portfolio-backend/tests/Feature/SanctumTokenHygieneTest.php` | new: prune-on-login + logout tests |
+| `tests/e2e/helpers.js` | optional vs required homepage section ids |
+| `tests/e2e/visual-snapshots.spec.js` | optional-section XOR assertions |
+| `tests/e2e/visual-snapshots.spec.js-snapshots/homepage-chromium-linux.png` | re-baselined against `portfolio_dev` |
+
+## Safety
+
+This report contains **no** database password, R2 key, token, or connection string.
+The read-only restore used credentials read from the git-ignored `.env` into a
+temporary mode-600 file that was shredded, and no writes were made to `defaultdb`.

@@ -4,6 +4,7 @@ const {
   loginAdmin,
   resetAdminSnapshotData,
   loadHomepageForSnapshot,
+  OPTIONAL_HOMEPAGE_SECTION_IDS,
 } = require('./helpers');
 
 const adminUrl = process.env.ADMIN_URL || 'http://127.0.0.1:3001';
@@ -36,6 +37,26 @@ test.describe('visual regression snapshots', () => {
     // so this test needs more headroom than the global 60s test timeout.
     test.setTimeout(150000);
     await loadHomepageForSnapshot(page);
+
+    // API Showcase (`#apis`) and Testimonials (`#testimonials`) are
+    // content-gated: production keeps both tables empty on purpose, so each
+    // renders — section and its navbar/footer link together — only when there
+    // is content for it. Assert the invariant either way instead of requiring
+    // them, so a legitimately empty dataset is not a missing-section failure:
+    //
+    //   rendered  => the section and at least one anchor link are visible;
+    //   empty     => neither the section nor any dangling link to its anchor.
+    for (const id of OPTIONAL_HOMEPAGE_SECTION_IDS) {
+      const section = page.locator(`#${id}`);
+      const links = page.locator(`a[href="#${id}"]`);
+
+      if ((await section.count()) > 0) {
+        await expect(section).toBeVisible();
+        await expect(links.first()).toBeVisible();
+      } else {
+        await expect(links).toHaveCount(0);
+      }
+    }
 
     await expect(page).toHaveScreenshot('homepage.png', {
       fullPage: true,
