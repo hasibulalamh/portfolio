@@ -57,6 +57,14 @@ services:
       # http://localhost:3000.
       - key: NEXT_PUBLIC_BASE_URL
         value: https://hasibulalam.com
+      # Public GA4 measurement ID for the public site only. Consumed at BUILD
+      # time like the two vars above (ARG/ENV bridge in the Dockerfile):
+      # app/layout.jsx renders the gtag snippet only when this is non-empty and
+      # the build is NODE_ENV=production, so dev, E2E runs and the admin panel
+      # never report to the property. The ID ships to the browser, so it is
+      # public and safe to commit — never a secret.
+      - key: NEXT_PUBLIC_GA_MEASUREMENT_ID
+        value: G-6R3C8THJHS
 
     # Deliberately omitted, because Render retains the dashboard value for
     # existing services and guessing wrong would change production behavior:

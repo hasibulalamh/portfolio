@@ -1,4 +1,4 @@
-import { Analytics } from '@vercel/analytics/next'
+import { GoogleAnalytics } from '@next/third-parties/google'
 import { Inter, Geist_Mono } from 'next/font/google'
 import { getSettings } from '@/lib/api'
 import './globals.css'
@@ -10,6 +10,15 @@ const geistMono = Geist_Mono({
 })
 
 const metadataBase = new URL(process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000')
+
+/**
+ * Public GA4 measurement ID (G-XXXXXXXXXX). NEXT_PUBLIC_* is inlined at build
+ * time, so this arrives only when the production build is handed the value via
+ * the Dockerfile ARG/ENV bridge (and render.yaml). A blank value means the tag
+ * is omitted entirely, which is what keeps dev and E2E runs off the real
+ * property — no fake traffic to production analytics.
+ */
+const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID
 
 const DEFAULT_TITLE = 'Hasibul Alam — Laravel & Vue.js Full-Stack Developer'
 
@@ -123,7 +132,9 @@ export default function RootLayout({ children }) {
     >
       <body className="bg-background font-sans antialiased">
         {children}
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+        {process.env.NODE_ENV === 'production' && gaMeasurementId ? (
+          <GoogleAnalytics gaId={gaMeasurementId} />
+        ) : null}
       </body>
     </html>
   )

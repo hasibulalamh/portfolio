@@ -17,6 +17,7 @@ RUN npm ci
 # this way — Render's docs recommend secret files for those.
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_BASE_URL
+ARG NEXT_PUBLIC_GA_MEASUREMENT_ID
 
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -27,11 +28,16 @@ COPY . .
 # `next build` — which reads process.env, not build args — sees the values.
 # Unset args become empty strings, which are falsy in the `|| fallback`
 # expressions in lib/api.js and contact.jsx, so a missing var degrades to the
-# documented localhost default instead of producing a broken URL.
+# documented localhost default instead of producing a broken URL. An unset
+# GA measurement ID likewise inlines as an empty string, which layout.jsx
+# treats as "no tag" — the Docker bridge can never inject a half-configured
+# analytics script.
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_BASE_URL
+ARG NEXT_PUBLIC_GA_MEASUREMENT_ID
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
-    NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL
+    NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL \
+    NEXT_PUBLIC_GA_MEASUREMENT_ID=$NEXT_PUBLIC_GA_MEASUREMENT_ID
 
 RUN npm run build
 
