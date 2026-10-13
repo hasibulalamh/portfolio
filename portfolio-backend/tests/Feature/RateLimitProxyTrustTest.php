@@ -6,6 +6,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Symfony\Component\HttpFoundation\IpUtils;
 use Tests\TestCase;
 
 /**
@@ -72,18 +73,21 @@ class RateLimitProxyTrustTest extends TestCase
 
         $trusted = Request::getTrustedProxies();
 
-        // The hop that terminates the connection is trusted by name — its
-        // address is not knowable at build time, which is why the list holds
-        // the literal REMOTE_ADDR rather than an IP.
-        $this->assertContains(self::LOAD_BALANCER, $trusted);
+        // Every hop is trusted by range, not by a single address: the load
+        // balancer has several nodes and the local hop's address is not
+        // knowable at build time, so the private and loopback ranges cover
+        // them. The balancer's address is verified as *covered* rather than
+        // listed literally.
+        $this->assertContains('10.0.0.0/8', $trusted);
+        $this->assertContains('127.0.0.0/8', $trusted);
+        $this->assertTrue(IpUtils::checkIp(self::LOAD_BALANCER, $trusted));
 
-        // Cloudflare's egress ranges sit in front of it and are listed.
+        // Cloudflare's egress ranges sit in front of them and are listed.
         $this->assertContains('104.16.0.0/13', $trusted);
         $this->assertContains('2606:4700::/32', $trusted);
 
-        // Never everything: with Cloudflare in front, X-Forwarded-For is
-        // *appended* to, so trusting every hop would return the leftmost value
-        // — the one the client wrote.
+        // Never everything: a client can send its own X-Forwarded-For, so
+        // trusting every hop would return the leftmost — client-forged — value.
         $this->assertNotContains('*', $trusted);
         $this->assertNotContains('0.0.0.0/0', $trusted);
         $this->assertNotContains('::/0', $trusted);

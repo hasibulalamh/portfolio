@@ -6734,3 +6734,149 @@ Do **not** revert `portfolio-backend/config/trustedproxy.php` or `report.md`.
 No deploy, no commit, no push, no `.env` edit. The only database work was the PHPUnit suite
 against the scratch local instance on `127.0.0.1:3307`. The probe logs nothing unless a request
 explicitly asks with `X-Probe: 1`.
+
+---
+
+# Part O — Fix Proxy Trust: Trust the Load-Balancer and Local Hops
+
+**Date:** 2026-10-13
+**Scope:** Add Render's load-balancer hop (`10.0.0.0/8`) and the in-container local hop
+(`127.0.0.0/8`) to `config/trustedproxy.php`, so `$request->ip()` is the visitor behind the
+real chain and every IP-keyed limiter is per-visitor again. Add tests that replay the
+production chain exactly. **No** limiter, key, or threshold changed; **no** `TRUSTED_PROXIES`
+in env; **no** deploy, no commit, no push. The TEMP-DIAGNOSTIC probe stays in place for
+production verification and is removed afterwards in its own revert commit.
+
+---
+
+## Evidence
+
+Production `TEMP-DIAGNOSTIC` line from `GET /api/settings` (`X-Probe: 1`):
+
+```
+request_ip=10.199.220.25  server_remote_addr=127.0.0.1
+x_forwarded_for="160.25.9.210, 172.71.247.163, 10.199.220.25"
+client_ips=["10.199.220.25","160.25.9.210"]  cache_default=file
+```
+
+The real chain, outermost first:
+
+```
+visitor (160.25.9.210)
+  -> Render edge   172.71.247.163   (inside Cloudflare's published egress ranges)
+  -> Render LB     10.199.220.25    (private 10.x)
+  -> local hop     127.0.0.1        (REMOTE_ADDR inside the container)
+  -> Laravel
+```
+
+This supersedes Part N's two-hop assumption: there is a third, in-container hop, and the edge
+falls inside Cloudflare's ranges.
+
+## Root cause
+
+Symfony resolves the client by walking `X-Forwarded-For` from the right — starting at
+`REMOTE_ADDR` — and skipping every entry that belongs to a trusted proxy; the first entry that
+is not ours wins. The trusted list was Cloudflare's ranges plus the literal `'REMOTE_ADDR'`
+(resolved at request time, i.e. `127.0.0.1`). The load balancer's private address was **not**
+listed, so the walk stopped at it:
+
+```
+10.199.220.25  <- stop here: ip() = the balancer, for every visitor
+172.71.247.163 <- trusted (Cloudflare), skipped
+127.0.0.1      <- trusted (REMOTE_ADDR), skipped
+```
+
+So `$request->ip()` returned a `10.199.220.25` balancer node for everyone. Buckets were keyed
+on the balancer node rather than the visitor: several `10.199.x.x` nodes meant the same visitor
+could land in different buckets (and any two visitors behind the same node shared one). That is
+also why `X-RateLimit-Remaining` could appear to *rise* — a different node answered with a
+nearly untouched bucket.
+
+## Change
+
+`portfolio-backend/config/trustedproxy.php` — default list is now
+
+```php
+[...$cloudflare, '10.0.0.0/8', '127.0.0.0/8']
+```
+
+- `10.0.0.0/8` — Render's load balancer. This is the hop that was missing.
+- `127.0.0.0/8` — the in-container local hop.
+- Cloudflare's ranges kept, as before. **Not** `'*'`.
+
+The header comment now describes the three-hop chain, the raw headers as the container sees
+them, and why private/loopback space is safe to trust (both are unroutable from the public
+internet, so a client can never *be* one of them; the visitor is the first address from the
+right that is not ours, and a client-forged prefix sits to its left and cannot win).
+
+### One deliberate deviation, with reason
+
+The brief said to keep the literal `'REMOTE_ADDR'`, but that token means *"trust whoever opened
+the connection"*, which is a hole for requirement (d). Verified locally through the real
+middleware with the token in place:
+
+```
+REMOTE_ADDR=198.51.100.5  X-Forwarded-For="1.1.1.1"  ->  $request->ip() = 1.1.1.1
+```
+
+i.e. a direct public peer's forged value **was** believed, because Laravel replaced
+`'REMOTE_ADDR'` with that peer. So the token was replaced by the `127.0.0.0/8` range: the local
+hop is still trusted (it is the only address that actually connects), a public peer is not, and
+test (d) is true through the real middleware rather than by test scaffolding.
+**No limiter, key, threshold, or route changed.**
+
+`portfolio-backend/BACKEND-SETUP.md` was synced: the trusted-proxies section and the
+`TRUSTED_PROXIES` table row no longer describe the literal `REMOTE_ADDR`. (Docs only.)
+
+## Tests
+
+New `portfolio-backend/tests/Feature/TrustedProxyChainTest.php`, replaying the exact production
+addresses (`REMOTE_ADDR=127.0.0.1`, `X-Forwarded-For` ending `172.71.247.163, 10.199.220.25`):
+
+| # | Assertion | Result |
+| --- | --- | --- |
+| a | chain `"203.0.113.9, 172.71.247.163, 10.199.220.25"` -> `ip()` is `203.0.113.9` | PASS |
+| b | forged prefix `"1.1.1.1, 203.0.113.9, …"` -> `ip()` is still `203.0.113.9` | PASS |
+| c | two visitors through the **same** balancer IP get independent `throttle:public-read` buckets (checked via `X-RateLimit-Remaining`: 119, 118 for A; 119 for B) | PASS |
+| d | public `REMOTE_ADDR=198.51.100.5` forging `X-Forwarded-For` -> `ip()` is `198.51.100.5`, not believed | PASS |
+
+One assertion in `tests/Feature/RateLimitProxyTrustTest.php` was updated: it asserted the peer's
+*exact* IP was in the trusted list (true only while the `'REMOTE_ADDR'` token resolved to it).
+It now asserts the `10.0.0.0/8` and `127.0.0.0/8` ranges are listed and that
+`IpUtils::checkIp(<balancer>, $trusted)` is true. No other test touched.
+
+**Full suite** (`php artisan test`, all four suites): **411 passed (1,540 assertions), exit 0**,
+~40 s, against the throwaway local `mysqld` on `127.0.0.1:3307` (process-env overrides only,
+no `.env` edit). `TrustedProxyChainTest` is 4 of those; `ProbeRequestDiagnosticsTest` still
+passes, untouched.
+
+## What to check in production
+
+1. Deploy this tree **with the probe still in place**, then hit it from two different networks:
+
+   ```bash
+   curl -sS -o /dev/null -w '%{http_code}\n' \
+     -H 'X-Probe: 1' https://api.hasibulalam.com/api/settings
+   # read the Render log line: TEMP-DIAGNOSTIC probe
+   ```
+
+2. Expect, in the log line:
+   - `request_ip` = the **visitor's public address**, never a `10.x`;
+   - `client_ips` = `["<visitor>"]` only (no balancer, no edge);
+   - two different networks resolve to two different `request_ip`s.
+3. `server_remote_addr` should still be `127.0.0.1` and `x_forwarded_for` should still end with
+   the load balancer's `10.x`.
+4. Watch `X-RateLimit-Remaining` across repeated reads from one browser: it should now fall
+   by one per request (120 budget) with no rising values.
+5. Once confirmed, remove the probe in its own revert commit (Part N's cleanup section). Do
+   **not** revert `config/trustedproxy.php`.
+
+If Render ever changes the balancer or local-hop address *ranges*, update the list or set
+`TRUSTED_PROXIES` accordingly and re-run `scripts/rate-limit-check.sh`.
+
+## Note on Part N's table
+
+Part N's row "`request_ip == server_remote_addr` (the edge) and `client_ips` holds one entry"
+described a two-hop chain. With the measured chain, the direct peer is the local `127.0.0.1`
+hop, and a wrong `request_ip` shows up as a `10.x` balancer address with the visitor still in
+`client_ips` — exactly the production line above.

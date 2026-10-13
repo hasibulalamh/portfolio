@@ -172,12 +172,14 @@ first few requests of the minute spent it, and everyone else was refused.
 
 ### Trusted proxies
 
-Every request arrives through two hops — Cloudflare, then Render's load
-balancer — so `REMOTE_ADDR` is a proxy address, never a visitor. `bootstrap/app.php`
-therefore trusts the proxies listed in `config/trustedproxy.php`, which is
-Cloudflare's published egress ranges plus the literal `REMOTE_ADDR` (Laravel
-replaces that at request time with whoever terminated the connection: Render's
-balancer, whose address is not knowable up front). Only the `X-Forwarded-*`
+Every request arrives through three hops — Cloudflare, then Render's load
+balancer, then a local hop inside the container — so `REMOTE_ADDR` is always the
+container's own `127.0.0.1`, never a visitor. `bootstrap/app.php` therefore
+trusts the proxies listed in `config/trustedproxy.php`: Cloudflare's published
+egress ranges, Render's private `10.0.0.0/8` load balancer, and the `127.0.0.0/8`
+local hop. Ranges are used rather than the literal `REMOTE_ADDR`, because that
+token would trust whoever opened the connection — including a request that
+reached the container directly from a public address. Only the `X-Forwarded-*`
 headers are trusted; `X-Forwarded-Prefix` is not, because nothing here rewrites
 paths.
 
@@ -192,7 +194,7 @@ bucket with every request.
 
 | Setting | Meaning |
 |---|---|
-| `TRUSTED_PROXIES` (env) | Comma-separated IPs/CIDRs to trust, or `REMOTE_ADDR`. Unset ⇒ Cloudflare's ranges + `REMOTE_ADDR`. |
+| `TRUSTED_PROXIES` (env) | Comma-separated IPs/CIDRs to trust, or `REMOTE_ADDR`. Unset ⇒ Cloudflare's ranges + `10.0.0.0/8` + `127.0.0.0/8`. |
 
 Set it in the Render dashboard (it is read when the config is cached at
 container start). If Cloudflare's ranges change and the list goes stale, the
