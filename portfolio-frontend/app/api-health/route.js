@@ -1,4 +1,4 @@
-import { API_BASE_URL, getSettings } from '@/lib/api'
+import { API_BASE_URL, probeApi } from '@/lib/api'
 
 /**
  * Live probe for the exact failure mode that took the real settings off this
@@ -14,6 +14,17 @@ import { API_BASE_URL, getSettings } from '@/lib/api'
  *   200 {"status":"ok","source":"live",...}       settings fetch succeeded
  *   503 {"status":"degraded","source":"fallback"} fetch failed or was empty
  *
+ * It also reports *how* the API answered, not just whether it did:
+ *
+ *   api_status       the HTTP status, or null when the request never got one
+ *   api_response_ms  how long that one request took
+ *   retry_after_ms   what a 429 asked us to wait, when it asked
+ *
+ * Those three fields exist because "degraded" alone sent the previous
+ * investigation looking in the wrong place: a rate-limited API (429), an API
+ * that never answers (timeout), and a broken API (5xx) all print the same
+ * verdict, and one curl should not have to guess between them.
+ *
  * `attempted_url` is reported even when things look fine, so a mispointed
  * NEXT_PUBLIC_API_URL (this project shipped a build with localhost baked in)
  * is visible at a glance — no bundle grepping required. Uptime checkers can
@@ -25,14 +36,19 @@ import { API_BASE_URL, getSettings } from '@/lib/api'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const startedAt = Date.now()
-  const settings = await getSettings({ revalidate: 0 })
-  const latencyMs = Date.now() - startedAt
+  const probe = await probeApi('/settings')
+  const settings = probe.ok ? probe.data : null
 
   const payload = {
     // The URL the fetch was pointed at — the single most diagnostic field.
     settings_endpoint: `${API_BASE_URL}/settings`,
-    latency_ms: latencyMs,
+    api_status: probe.status,
+    api_response_ms: probe.latencyMs,
+    // Kept under its original name for existing uptime checks and dashboard
+    // filters; it is the same measurement as api_response_ms.
+    latency_ms: probe.latencyMs,
+    // Present only when the API asked us to back off (429).
+    ...(probe.retryAfterMs === null ? {} : { retry_after_ms: probe.retryAfterMs }),
     checked_at: new Date().toISOString(),
   }
 
@@ -42,7 +58,12 @@ export async function GET() {
         status: 'degraded',
         source: 'fallback',
         ...payload,
-        hint: 'getSettings() returned no data; the public site is rendering FALLBACK_SETTINGS. Check the api_fallback log lines and that NEXT_PUBLIC_API_URL was present at build time.',
+        // Lead with what the API actually did; the generic hint follows.
+        ...(probe.error ? { api_error: probe.error } : {}),
+        hint:
+          probe.status === 429
+            ? 'the API rate limited this request; the public site is rendering FALLBACK_SETTINGS until the limit resets. Check the upstream limiter and the api_fallback log lines.'
+            : 'getSettings() returned no data; the public site is rendering FALLBACK_SETTINGS. Check the api_fallback log lines and that NEXT_PUBLIC_API_URL was present at build time.',
       },
       { status: 503, headers: { 'Cache-Control': 'no-store' } },
     )

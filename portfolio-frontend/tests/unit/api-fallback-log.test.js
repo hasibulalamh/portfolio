@@ -68,5 +68,36 @@ describe('formatApiFallbackLog', () => {
       expect(parsed.status).toBeNull()
       expect(parsed.detail).toContain('data')
     })
+
+    it('classifies an aborted request as timeout, with the ceiling it hit', () => {
+      // Distinct from network_error on purpose: "too slow" and "refused"
+      // send an operator to different places.
+      const parsed = JSON.parse(
+        formatApiFallbackLog({ path: '/settings', timeout: true, timeoutMs: 8000 }),
+      )
+
+      expect(parsed.reason).toBe('timeout')
+      expect(parsed.status).toBeNull()
+      expect(parsed.detail).toContain('8000ms')
+    })
+  })
+
+  describe('Retry-After reporting', () => {
+    it('includes the wait the API asked for on a 429', () => {
+      const parsed = JSON.parse(
+        formatApiFallbackLog({ path: '/settings', status: 429, retryAfterMs: 60_000 }),
+      )
+
+      expect(parsed.reason).toBe('http_429')
+      expect(parsed.retry_after_ms).toBe(60_000)
+    })
+
+    it('omits the field entirely when the API did not ask for a wait', () => {
+      // Absence has to be meaningful — an empty or zero field would read as
+      // "the API told us to come back immediately".
+      const parsed = JSON.parse(formatApiFallbackLog({ path: '/settings', status: 429 }))
+
+      expect('retry_after_ms' in parsed).toBe(false)
+    })
   })
 })
