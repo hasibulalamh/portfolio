@@ -6280,8 +6280,8 @@ the first ten contact submissions of the minute locked out everyone else. In add
 strict limits were inline `throttle:10,1` / `throttle:30,1`, whose bucket key is
 `sha1(domain|ip)` **alone** — the same key for every route using one — so thirty tracked
 clicks spent the contact form's budget too. Public reads had no limiter at all, and answered
-`Cache-Control: no-cache, private`, which forbids Cloudflare and every other intermediary
-from storing content that had not changed in weeks.
+`Cache-Control: no-cache, private`, which forbids every intermediary from storing content
+that had not changed in weeks.
 
 **2. A server-side API call had no ceiling, so one unanswered request held the render open.**
 
@@ -6293,9 +6293,10 @@ fallbacks**; the fixed build finished in **30 s** with a fallback for every endp
 that page now answers in **7 ms** with fallback content instead of hanging.
 
 The ISR window (`next: { revalidate: 60 }`) already existed on HEAD, so "missing revalidate"
-was **not** a cause (H8 below) — but it is why the fix also lets the *edge* cache the reads
-(`s-maxage=300`), turning repeat renders into cache hits rather than requests that can be
-rate limited.
+was **not** a cause (H8 below). The fix also sends `s-maxage=300`, which *permits* an
+intermediary to reuse the reads — but in production that permission is not exercised:
+`api.hasibulalam.com` is DNS-only on Render's own edge and repeated reads return
+`cf-cache-status: DYNAMIC`, so they still reach the origin.
 
 ---
 
@@ -6479,8 +6480,8 @@ E2E that did **not** pass, and why it is not this change (all on local fixtures/
 | H4 | Public reads had no budget, so a single client could spend the container | **CONFIRMED** | 121 one-IP reads → `200 x121` before; `200 x120, 429 x1` after, with a second IP unaffected |
 | H5 | Visitors see 429s because the frontend retries in a loop / storming the API | **REFUTED** | HEAD has no retry logic at all (only a bare `fetch`). The fix retries **once**, and only when `Retry-After ≤ 1 s`; a 60 s `Retry-After` falls back immediately and reports `retry_after_ms: 60000` |
 | H6 | The API is slow because of the database / remote hosting | **REFUTED** as the cause of the hang | The hang reproduces with a stub API and no database involved; `/settings` answers in 39 ms locally; the whole PHPUnit suite is ~51 s on a local MySQL (vs 1,392 s over the remote link — that is a *test-environment* cost, not a production cause) |
-| H7 | Cloudflare's own edge limiting is what visitors actually hit | **NOT VERIFIED** (no production access) | The fix makes it distinguishable rather than guessing: `/api-health` reports `api_status` and `retry_after_ms`, and the `api_fallback` log line carries `reason` (`http_429` / `timeout` / `http_5xx` / `network_error`) |
-| H8 | Missing ISR `revalidate` meant every render re-fetched everything | **REFUTED** | HEAD already sends `next: { revalidate: 60 }`; the value is unchanged. What the fix adds is the abort signal, the 429 handling, and `s-maxage=300` so the edge can answer instead of the origin |
+| H7 | An upstream edge limiter (Render's, not this account's Cloudflare) is what visitors actually hit | **NOT VERIFIED** (no production access) | `api.hasibulalam.com` is DNS-only — served by Render's own edge (216.24.57.x, `*.onrender.com`), not by this account's Cloudflare — so any edge limiting would be Render's. The fix makes the source distinguishable rather than guessing: `/api-health` reports `api_status` and `retry_after_ms`, and the `api_fallback` log line carries `reason` (`http_429` / `timeout` / `http_5xx` / `network_error`) |
+| H8 | Missing ISR `revalidate` meant every render re-fetched everything | **REFUTED** | HEAD already sends `next: { revalidate: 60 }`; the value is unchanged. What the fix adds is the abort signal, the 429 handling, and `s-maxage=300` cache headers (which permit, but in production do not yet cause, an intermediary cache to answer instead of the origin) |
 
 ---
 
@@ -6488,7 +6489,7 @@ E2E that did **not** pass, and why it is not this change (all on local fixtures/
 
 | File | Change |
 | --- | --- |
-| `portfolio-backend/config/trustedproxy.php` | **new** — the trusted proxy list: Cloudflare's published ranges plus the literal `REMOTE_ADDR` (Render's balancer, whose address is not knowable up front). Deliberately not `'*'`, with the reasoning written down |
+| `portfolio-backend/config/trustedproxy.php` | **new** — the trusted proxy list: the literal `REMOTE_ADDR` (Render's edge, whose address is not knowable up front) plus Cloudflare's published ranges kept only as a harmless extra, since `api.hasibulalam.com` is DNS-only and not proxied by this account's Cloudflare. Deliberately not `'*'`, with the reasoning written down |
 | `portfolio-backend/bootstrap/app.php` | `$middleware->trustProxies(headers: X-Forwarded-For, Host, Port, Proto)`; `X-Forwarded-Prefix` deliberately excluded |
 | `portfolio-backend/app/Providers/AppServiceProvider.php` | three named limiters keyed on `$request->ip()`: `public-read` 120/min, `public-write` 10/min, `click-tracking` 30/min |
 | `portfolio-backend/routes/api.php` | the 11 public GETs move into `middleware(['throttle:public-read', PublicCacheHeaders::class])`; the forms move to `throttle:public-write` (same 10/min); `/track` moves to `throttle:click-tracking` (same 30/min) |
@@ -6512,10 +6513,12 @@ E2E that did **not** pass, and why it is not this change (all on local fixtures/
   instead of "never").
 - **Limits are per visitor.** One visitor's burst no longer refuses anybody else, and one
   endpoint's traffic no longer refuses another's.
-- **Fewer origin requests.** `s-maxage=300` lets Cloudflare answer repeat reads, so several
-  visitors (or several renders) inside those five minutes are served at the edge instead of
-  each spending the origin's budget — latency and the chance of tripping the 120/min limit
-  both drop. The 60 s ISR window is unchanged.
+- **Cacheable reads — an allowance, not a measured saving.** `s-maxage=300` lets an
+  intermediary cache the reads, replacing the `no-cache, private` the app used to send (which
+  was the actual bug: it forbade caching content that had not changed in weeks). It has **not**
+  been shown to reduce origin requests: `api.hasibulalam.com` is DNS-only behind Render's own
+  edge, and repeated production reads still return `cf-cache-status: DYNAMIC`. The 60 s ISR
+  window is unchanged.
 - **The next incident is diagnosable in one call.** `curl /api-health` says whether the API
   answered, with what status, how fast, and what `Retry-After` it asked for.
 
@@ -6541,9 +6544,11 @@ E2E that did **not** pass, and why it is not this change (all on local fixtures/
 
 1. Deploy the backend first, then the frontend (the frontend tolerates either shape).
 2. `curl -sS -D - -o /dev/null https://api.hasibulalam.com/api/settings` — expect `200`,
-   `Cache-Control: ... public, s-maxage=300 ...`, and `X-RateLimit-Limit: 120`.
-3. Twice through Cloudflare, confirm the second read is a cache `HIT` (or that origin
-   request logs show one request), i.e. the edge is doing the work.
+   `Cache-Control: ... public, s-maxage=300 ...`, and `X-RateLimit-Limit: 120`. The domain is
+   DNS-only (Render's own edge, not this account's Cloudflare), so read the headers as an
+   *allowance* to cache, not as proof that the edge does.
+3. Repeat the read and check `cf-cache-status: DYNAMIC` — the expectation is that the edge is
+   **not** caching it and the request still reaches the origin.
 4. `curl -s https://hasibulalam.com/api-health` — expect `200`/`"source":"live"` and a small
    `api_response_ms`. Then, with the API deliberately stopped, confirm it returns `503`
    within ~8 s rather than the page hanging.
@@ -6551,10 +6556,10 @@ E2E that did **not** pass, and why it is not this change (all on local fixtures/
    contact form on one and confirm the other still succeeds — the per-visitor property is
    the one that cannot be verified from a single client.
 6. Watch the public site's logs for `api_fallback` and its `reason`; `http_429` with a large
-   `retry_after_ms` means an upstream limiter (Cloudflare included), `timeout` means the
+   `retry_after_ms` means an upstream limiter (Render's edge), `timeout` means the
    container, `http_5xx` means the application.
 7. If `TRUSTED_PROXIES` is ever set in the Render dashboard, keep it a real list (never `*`):
-   with Cloudflare in front, `X-Forwarded-For` is appended to, so trusting everything returns
+   with the edge in front, `X-Forwarded-For` is appended to, so trusting everything returns
    the client's own forgeable value and hands out a fresh bucket per request.
 
 ## Limitations and honest gaps
@@ -6565,7 +6570,9 @@ E2E that did **not** pass, and why it is not this change (all on local fixtures/
   scenarios in §4 were therefore verified with the same stubs and the same builds, but with
   the cache preserved. In CI (with reliable network) the harness should be run as written —
   I have not proven it green.
-- **H7 (Cloudflare's own limiting) is not verified** — there is no production access here.
+- **H7 (any upstream edge limiting) is not verified** — there is no production access here,
+  and `api.hasibulalam.com` is DNS-only on Render's own edge, so any such limit would be
+  Render's rather than this account's Cloudflare.
 - The `storage-orphans`, `cms-snapshots`, and `visual-snapshots` failures are not caused by
   this change — it touches neither the admin app nor the specs — and are local-data/timing
   artifacts (table in §5). I did not repair them: none of them exercises rate limiting or
@@ -6594,6 +6601,136 @@ against the dev database (abandoned as too slow, and read-only) and one PHPUnit 
 disposable by design, but it is remote, so it is recorded here.
 
 This report contains **no** database password, R2 key, token, or connection string. The
-Cloudflare ranges in `config/trustedproxy.php` are public data; the local test credentials it
+Cloudflare ranges in `config/trustedproxy.php` are public data (kept only as a harmless extra,
+`api.hasibulalam.com` being DNS-only); the local test credentials it
 implicitly relies on (`root`, no password, `127.0.0.1:3307`) are a scratch instance created for
 this run and are not part of the project.
+
+---
+
+# Part N — Temporary Proxy-Chain Probe (What Laravel Sees Behind Render's Edge)
+
+**Date:** 2026-10-13
+**Scope:** Add a temporary, opt-in diagnostic to `GET /api/settings` that reports the address
+Laravel resolved and the raw forwarding headers, so the proxy chain behind
+`api.hasibulalam.com` can be observed directly instead of inferred. Also correct two
+inaccurate statements in `config/trustedproxy.php` and Part M: the API is **DNS-only** (served
+by Render's own edge, not this account's Cloudflare), and the `s-maxage=300` cache headers do
+**not** produce edge cache hits. No change to the limiter or trusted-proxy configuration, no
+deploy, no commit, no push, no `.env` edit.
+
+---
+
+## Why
+
+Part M proved the per-visitor buckets locally, but two things stayed unverified in production:
+
+1. **The counts are noisy.** On the live `throttle:public-read` limiter,
+   `X-RateLimit-Remaining` sometimes *rises* between requests (117 → 118). A single fixed
+   bucket does not behave that way, so either the bucket key is not the visitor, or the counter
+   is being read from more than one place. Response headers alone cannot say which.
+2. **The chain was assumed, not measured.** `config/trustedproxy.php` listed Cloudflare's ranges
+   plus `REMOTE_ADDR` on the premise that `api.hasibulalam.com` was proxied by this account's
+   Cloudflare. A `dig` shows it is **DNS-only** — it resolves to Render's own edge (`216.24.57.x`,
+   `*.onrender.com`), not to Cloudflare — so which hop appends `X-Forwarded-For`, and whether the
+   visitor survives the walk, is unknown.
+
+The probe closes both: for an opted-in request it prints exactly what the process received.
+
+---
+
+## What was added (every line marked `TEMP-DIAGNOSTIC`)
+
+| File | Change |
+| --- | --- |
+| `portfolio-backend/app/Http/Middleware/ProbeRequestDiagnostics.php` | **new** — pass-through unless `X-Probe: 1`; then one `Log::info('TEMP-DIAGNOSTIC probe', …)` line with `request_ip` (`$request->ip()`), `server_remote_addr` (`$_SERVER['REMOTE_ADDR']`), `x_forwarded_for` (raw header), `client_ips` (`$request->getClientIps()`), and `cache_default` (`config('cache.default')`). Never calls `Log` otherwise |
+| `portfolio-backend/routes/api.php` | attached **only** to `GET /api/settings` (`->middleware(ProbeRequestDiagnostics::class)`) |
+| `portfolio-backend/tests/Feature/ProbeRequestDiagnosticsTest.php` | **new** — pins both halves: header present → the one line is logged; header absent → `Log::shouldNotHaveReceived('info')` |
+
+It judges and changes nothing: the limiter and the trusted-proxy list are untouched, and
+ordinary traffic produces no new log lines.
+
+---
+
+## How to run and read it
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  -H 'X-Probe: 1' https://api.hasibulalam.com/api/settings
+# then read the Render logs for:  TEMP-DIAGNOSTIC probe
+```
+
+Interpreting the single line:
+
+| Observation | Reading |
+| --- | --- |
+| `request_ip` is the visitor's public address and `client_ips` lists it first | the chain resolved to the visitor — buckets are per-visitor |
+| `request_ip == server_remote_addr` (the edge) and `client_ips` holds one entry | the edge hop is not trusted; every visitor shares one bucket |
+| `x_forwarded_for` shows more than one hop | shows the appended chain and which entries the trusted list skipped |
+| `cache_default` is `file`/`redis` (not `array`) | the counter store is shared across requests, so a *rising* `X-RateLimit-Remaining` points at the *key*, not the store — or at more than one app instance |
+
+Run it from two different networks (or with two different `X-Forwarded-For` values) and compare
+`request_ip`: if the two calls resolve to different visitors, the buckets are per-visitor; if
+they collapse to the same address, the `REMOTE_ADDR`/`TRUSTED_PROXIES` config still needs
+attention. **Do not** "fix" that by setting `TRUSTED_PROXIES=*` — that re-opens the
+forged-`X-Forwarded-For` bucket-minting hole Part M documented.
+
+---
+
+## Verification
+
+| Check | Result |
+| --- | --- |
+| `ProbeRequestDiagnosticsTest` | **2 passed** (4 assertions) — logs with the header, silent without |
+| Full PHPUnit suite (`php artisan test`) | **407 passed** (1,519 assertions), **exit 0**, 30.97 s |
+| `php -l` on the changed/new PHP files | clean |
+
+The +2 tests / +4 assertions over Part M's 405 are the probe test. As in Part M, the suite ran
+against a throwaway local `mysqld` on `127.0.0.1:3307` (process-environment overrides only; no
+`.env` edit).
+
+**Not yet observed:** the probe has not run against production — that requires deploying this
+tree and issuing the `curl` above. The local test proves the logging wiring, not the real Render
+chain; the whole point of the exercise is the production line.
+
+---
+
+## Corrections made with this change (comments/docs only, no behaviour change)
+
+1. **`portfolio-backend/config/trustedproxy.php`** — the header comment now states the real
+   chain (`browser -> Render's own edge -> container`), that `api.hasibulalam.com` is DNS-only
+   (resolving to Render's edge, `216.24.57.x` via `*.onrender.com`, **not** this account's
+   Cloudflare), and that the Cloudflare ranges are kept only as a harmless extra in case the API
+   is ever put behind Cloudflare. The assertion that `TRUSTED_PROXIES=*` "restores per-visitor
+   accounting" was **removed** — it contradicted the security reasoning directly above it. The
+   `proxies` array itself is byte-for-byte unchanged.
+2. **`report.md` Part M** — the same facts were corrected in the summary, H7, the files-changed
+   table, the expected-impact list, the suggested production-verification steps, the
+   limitations, and the safety note. In particular, `s-maxage=300` is now described as an
+   *allowance* to cache, not a measured saving: repeated production reads return
+   `cf-cache-status: DYNAMIC`, so they still reach the origin.
+
+No limiter, key, threshold, route group, or trusted-proxy value changed.
+
+---
+
+## Revert / cleanup (this is temporary)
+
+Everything below is the diagnostic; the two corrections above are permanent and must stay.
+
+```bash
+rm portfolio-backend/app/Http/Middleware/ProbeRequestDiagnostics.php \
+   portfolio-backend/tests/Feature/ProbeRequestDiagnosticsTest.php
+git checkout -- portfolio-backend/routes/api.php   # uncommitted; or `git revert <commit>` if committed first
+grep -rn TEMP-DIAGNOSTIC portfolio-backend          # should print nothing when done
+```
+
+Do **not** revert `portfolio-backend/config/trustedproxy.php` or `report.md`.
+
+---
+
+## Safety
+
+No deploy, no commit, no push, no `.env` edit. The only database work was the PHPUnit suite
+against the scratch local instance on `127.0.0.1:3307`. The probe logs nothing unless a request
+explicitly asks with `X-Probe: 1`.

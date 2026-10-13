@@ -14,30 +14,33 @@
 |
 | The real chain, outermost first:
 |
-|   browser -> Cloudflare (proxying api.hasibulalam.com)
-|           -> Render's load balancer
+|   browser -> Render's own edge (api.hasibulalam.com is DNS-only: it resolves
+|              to Render's edge, 216.24.57.x via *.onrender.com, and is NOT
+|              proxied by this account's Cloudflare)
 |           -> this container (php artisan serve)
 |
-| So two proxies have to be trusted, and they are named differently on
-| purpose:
+| So the hop that terminates the connection has to be trusted, and it is named
+| in a way that does not require knowing its address:
 |
-|   * Cloudflare's published egress ranges (https://www.cloudflare.com/ips/)
-|     — these addresses are known up front and can be listed.
 |   * 'REMOTE_ADDR' — a literal Laravel replaces at request time with the
-|     address the request actually came from. That is Render's load balancer,
-|     whose address is not knowable here, and trusting "whoever is calling
+|     address the request actually came from. That is Render's edge, whose
+|     address is not knowable here, and trusting "whoever is calling
 |     directly" is exactly right for the hop that terminates the connection.
+|   * Cloudflare's published egress ranges (https://www.cloudflare.com/ips/)
+|     are listed too, but only as a harmless extra: because the domain is
+|     DNS-only they should never be the immediate peer. They are kept so the
+|     same list still works if the API is ever put behind Cloudflare.
 |
-| With both trusted, Symfony walks X-Forwarded-For from the right, skips the
+| With the edge trusted, Symfony walks X-Forwarded-For from the right, skips the
 | entries belonging to our own proxies, and returns the first address that is
 | not ours — the visitor's. A client-supplied X-Forwarded-For cannot win that
 | walk, because the value a proxy appends is always further right than the
 | value the client sent.
 |
-| Deliberately NOT '*' (trust-everything): with Cloudflare in front, XFF is
-| appended to, not replaced, so trusting every hop makes the leftmost — the
-| client's own, forgeable — value the answer. That would let anyone mint a new
-| bucket per request and walk straight through the login and form limits.
+| Deliberately NOT '*' (trust-everything): a client can send its own
+| X-Forwarded-For, and trusting every hop makes the leftmost — the client's
+| own, forgeable — value the answer. That would let anyone mint a new bucket
+| per request and walk straight through the login and form limits.
 |
 | Override without touching this file by setting TRUSTED_PROXIES in the
 | environment (the Render dashboard): a comma-separated list of IPs/CIDRs, or
@@ -45,11 +48,9 @@
 | Laravel reads it at config-cache time, so the value must be present when the
 | container boots.
 |
-| If Cloudflare's ranges ever change and this list goes stale, the failure is
-| degraded rather than broken: requests from an unlisted Cloudflare range
-| resolve to that range's address, so those visitors share one bucket again —
-| the same behaviour as trusting nothing. Widening the list (or setting
-| TRUSTED_PROXIES=*) restores per-visitor accounting.
+| If the list ever goes stale, the failure is degraded rather than broken: a
+| request from an unlisted peer resolves to that peer's address, so those
+| visitors share one bucket again — the same behaviour as trusting nothing.
 |
 */
 
