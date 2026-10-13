@@ -209,9 +209,10 @@ seeded admin password, and point `FRONTEND_URL` / `ADMIN_URL` /
 cd portfolio-backend && php artisan test
 ```
 
-Currently only the two default `ExampleTest` files — there is no real API
-coverage yet. The E2E harness in `audit/` is the practical regression suite; see
-`report.md` §8 for how to run it.
+Four PHPUnit suites (Unit / Feature / Regression / Contract) plus the Playwright
+E2E suite in `tests/e2e` at the repo root. `portfolio-backend` also ships
+`scripts/rate-limit-check.sh`, which probes a running API for per-visitor rate
+limit buckets without writing anything.
 
 ---
 
@@ -224,6 +225,8 @@ coverage yet. The E2E harness in `audit/` is the practical regression suite; see
 | First page load hangs 30–60 s | Cold Turbopack compile. Normal in dev; wait it out |
 | Admin edits don't show on the public site | 60 s ISR cache (`REVALIDATE_SECONDS` in `portfolio-frontend/lib/api.js`). Wait, or lower it |
 | `SQLSTATE[HY000] [1049] Unknown database` | Create the DB before running `migrate` |
-| `429 Too Many Requests` on contact form | Working as intended — `throttle:10,1` on public writes |
+| `429 Too Many Requests` on contact form | Working as intended — `throttle:public-write`, 10/min per client IP |
+| `429` on `/api/settings`, site renders default content | Public-read limit (120/min per client IP), or an upstream proxy's own limit. The `api_fallback` log line's `reason`/`retry_after_ms` says which; `curl` the frontend's `/api-health` for the live status and timing. Background: `portfolio-backend/BACKEND-SETUP.md` § *Rate limiting and proxy trust* |
+| Every visitor seems to share one rate-limit bucket | `TRUSTED_PROXIES` unset or wrong, so `$request->ip()` is the proxy's address. Prove it with `cd portfolio-backend && ./scripts/rate-limit-check.sh` |
 | Uploaded images 404 | Run `php artisan storage:link` |
 | `Route [login] not defined` 500s | Fixed in `bootstrap/app.php`; run `php artisan config:clear` if a stale cache persists |

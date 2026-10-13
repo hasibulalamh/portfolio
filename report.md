@@ -6252,3 +6252,348 @@ collect + Realtime level; the dashboard figure will follow.
 No credential is added or exposed: the GA4 measurement ID is a public client-side
 identifier that ships to every browser. This report contains no database password, R2
 key, token, or connection string.
+---
+
+# Part M — Per-Visitor Rate Limits Behind the Proxy, and Bounded Server-Side Fetches
+
+**Date:** 2026-10-13
+**Scope:** Fix the production slowness that answered `curl https://hasibulalam.com` with
+`HTTP 000` after ~12 minutes, and the rate limiting suspected of causing it. Backend:
+trust the proxy chain, give public reads their own per-visitor budget with cacheable
+responses, and move the strict visitor-form / click-tracking limits onto named limiters
+so they stop sharing a bucket. Frontend: bound every server-side API call, honour a
+*short* `Retry-After` on 429 exactly once, and report the API's status and timing from
+`/api-health`. No deploy, no commit, no production change, no `.env` edit.
+
+---
+
+## Summary
+
+Two independent faults were producing one symptom. Either alone degrades the site; together
+they explain both halves of the report (`429`s *and* a page that never finishes).
+
+**1. The rate limits were not per visitor, and not per endpoint.**
+
+Laravel did not trust the proxy chain, so `$request->ip()` was Render's load balancer for
+every visitor. Every IP-keyed limiter therefore held *one* bucket for the whole internet:
+the first ten contact submissions of the minute locked out everyone else. In addition, the
+strict limits were inline `throttle:10,1` / `throttle:30,1`, whose bucket key is
+`sha1(domain|ip)` **alone** — the same key for every route using one — so thirty tracked
+clicks spent the contact form's budget too. Public reads had no limiter at all, and answered
+`Cache-Control: no-cache, private`, which forbids Cloudflare and every other intermediary
+from storing content that had not changed in weeks.
+
+**2. A server-side API call had no ceiling, so one unanswered request held the render open.**
+
+`portfolio-frontend/lib/api.js` passed no `signal` to `fetch`. When the API accepted the
+connection and never answered — a cold free-tier container, a stuck worker — the render
+(and a build's prerender) waited forever. Reproduced locally against a stub that accepts and
+never replies: **HEAD's build was still running when it was killed at 158 s, and logged zero
+fallbacks**; the fixed build finished in **30 s** with a fallback for every endpoint. Served,
+that page now answers in **7 ms** with fallback content instead of hanging.
+
+The ISR window (`next: { revalidate: 60 }`) already existed on HEAD, so "missing revalidate"
+was **not** a cause (H8 below) — but it is why the fix also lets the *edge* cache the reads
+(`s-maxage=300`), turning repeat renders into cache hits rather than requests that can be
+rate limited.
+
+---
+
+## Verification (BEFORE / AFTER)
+
+All BEFORE numbers come from HEAD (`4e15355`) in a separate git worktree, so the fixed tree
+was never reverted to take them. The backend BEFORE API ran from that worktree on
+`127.0.0.1:8011`, the fixed API on `127.0.0.1:8010`, both against the same throwaway local
+MySQL. Every request carries the visitor's address only in `X-Forwarded-For`, exactly as
+Render's balancer appends it.
+
+> Reproduce: `git worktree add /tmp/before HEAD`, then symlink `vendor/` and `.env` into it
+> and `php artisan serve --port=8011` from that directory. PHPUnit inside such a worktree
+> must be given `APP_BASE_PATH=<worktree>` — `Application::inferBasePath()` otherwise reads
+> the symlinked `vendor/` and boots the *fixed* app (this bit me once, and is why the
+> baseline below was re-run with the variable set).
+
+### 1. The proxy's address was the rate-limit identity
+
+```php
+// the address a request arrives from, as in production: REMOTE_ADDR is the balancer
+$request = Request::create('/api/settings', 'GET', [], [], [], [
+    'REMOTE_ADDR' => '10.0.0.5',
+    'HTTP_X_FORWARDED_FOR' => '203.0.113.9',
+]);
+```
+
+| | `$request->ip()` |
+| --- | --- |
+| BEFORE (HEAD) | `10.0.0.5` — the load balancer, for every visitor |
+| AFTER | `203.0.113.9` — the visitor |
+
+Same behaviour over real HTTP, as a shared bucket. Eleven *distinct* visitors each submit the
+contact form once (limit: 10/min **each**):
+
+```
+BEFORE  422 x10, 429 x1     <- the 11th visitor is refused because the first ten spent
+                               the bucket that was somehow everyone's
+AFTER   422 x11             <- each visitor has their own budget
+```
+
+### 2. The strict limits shared one bucket across endpoints
+
+One visitor, six `POST /track` (budget 30/min) followed by six `POST /contact-messages`
+(budget 10/min — a different endpoint, a different limit):
+
+```
+BEFORE  /track             422 x6
+        /contact-messages  422 x4, 429 x2    <- refused on its own 5th/6th request,
+                                                because /track had already spent the
+                                                sha1(domain|ip) bucket both routes share
+AFTER   /track             422 x6
+        /contact-messages  422 x6            <- separate named limiters, separate buckets
+```
+
+The same collision, from the other direction, at the shipped limit (31 visitors, one
+`POST /track` each — 30/min each):
+
+```
+BEFORE  422 x30, 429 x1     <- the 31st *visitor* is refused for the 30 requests everyone
+                               else made
+AFTER   422 x31
+```
+
+And the login route keeps its tighter, separately-keyed budget: 5 attempts per email+visitor,
+then `429 Too many login attempts` — and a *different* visitor attempting the same email is
+not locked out (`RateLimitProxyTrustTest::test_the_login_limit_stays_five_per_email_and_visitor`).
+
+### 3. Public reads had no budget, and nothing downstream could cache them
+
+```bash
+curl -sS -D - -o /dev/null -H 'X-Forwarded-For: 198.51.100.7' http://127.0.0.1:8011/api/settings
+```
+
+| | Response to `GET /settings` |
+| --- | --- |
+| BEFORE | `200 OK`, `Cache-Control: no-cache, private`, **no** `X-RateLimit-*` headers |
+| AFTER | `200 OK`, `Cache-Control: max-age=60, public, s-maxage=300, stale-while-revalidate=300`, `X-RateLimit-Limit: 120`, `X-RateLimit-Remaining: 119` |
+
+121 reads from one visitor, then one read from a different visitor:
+
+```
+BEFORE  200 x121                          <- unbounded
+AFTER   200 x120, 429 x1                  <- and the other visitor still gets 200
+```
+
+A 429 is never cached (`s-maxage`/`public` absent) and the POST endpoints never receive the
+public cache headers — both pinned by
+`RateLimitProxyTrustTest::test_a_rate_limited_response_is_never_cached` and
+`test_write_responses_are_not_given_public_cache_headers`.
+
+The repo's own probe agrees, run against each API:
+
+```
+API_URL=http://127.0.0.1:8011/api ./scripts/rate-limit-check.sh   # HEAD
+  -> 5 expectation(s) NOT met.                                    (exit 1)
+
+API_URL=http://127.0.0.1:8010/api ./scripts/rate-limit-check.sh   # fixed
+  -> All rate-limit / proxy-trust expectations met.               (exit 0)
+```
+
+*(Caveat, for anyone re-running it: the script clears the cache of the tree it lives in, so
+when it is pointed at a *different* server the counters of that server survive between its
+scenarios. The per-endpoint numbers above therefore come from a variant that clears each
+server's own cache between scenarios; the script's own numbers agree wherever the state is
+clean. Its `$request->ip()` check always runs in the current tree, so it speaks only to the
+API the script is in — the BEFORE/AFTER comparison for that line is the table in § 1.)*
+
+### 4. The frontend had no ceiling on a server-side fetch
+
+Two stub APIs stand in for the failure modes: one answers `429 + Retry-After: 60` to every
+read, the other accepts the connection and never answers. The real `next build` (which
+prerenders the homepage through the real fetch path) and a real `next start` are driven
+against each.
+
+| | Real build (prerender), API hung |
+| --- | --- |
+| BEFORE (`lib/api.js` from HEAD, no `signal`) | **killed at 158 s while still building**; 0 `api_fallback` lines; nothing ever gives up, so nothing ever falls back |
+| AFTER | **exit 0 in 30 s**; 13 `api_fallback` lines, every one `"reason":"timeout"`, `"detail":"no response within 8000ms"` |
+
+| | Build against `429` API | Served page (`GET /`) | Served `/api-health` |
+| --- | --- | --- | --- |
+| BEFORE | not measured on HEAD; its code path is inspectable — a non-2xx took the generic `!response.ok` branch, so it fell back and logged a bare `http_429` with no `Retry-After` awareness and no retry | — | HEAD's route only reported settings `status`/`source`, never the API's own status |
+| AFTER | exit 0 in **6 s**; 13 lines `"reason":"http_429"`, `"status":429`, `"retry_after_ms":60000` | `200` in **0.032 s**, `x-settings-source` `content="fallback"`, hardcoded title rendered | `503` in 0.012 s: `api_status: 429`, `api_response_ms: 4`, `retry_after_ms: 60000`, 429-specific hint |
+| AFTER (hung) | — | `200` in **0.007 s**, same fallback markers | `503` in **8.007 s**: `api_status: null`, `api_response_ms: 8001`, `api_error: "no response within 8000ms"` |
+
+Notes on the two numbers that matter most:
+
+- The page is bounded by the **8 s** timeout, not by the harness. The served homepage answers
+  in single-digit milliseconds because its fallback was prerendered at build time; a render
+  that has to fetch (a stale ISR entry revalidating, a page not prerendered) is what waits,
+  and it stops at the ceiling. The probe always waits it out — 8 001 ms rather than the
+  harness's 30 s budget.
+- A `Retry-After` of 60 s is *not* waited out (`retry_after_ms: 60000` is reported instead):
+  only waits up to `MAX_RETRY_AFTER_MS = 1000` are honoured, and then exactly once. Both
+  halves — the short-wait retry and the long-wait fallback — are unit-tested
+  (`api-fetch.test.js`, 16 tests).
+
+Against the real, healthy API on the same machine, the build logs **zero** `api_fallback`
+lines and `/api-health` answers `{"status":"ok","source":"live",...,"api_status":200,"api_response_ms":39}`.
+
+### 5. Suites
+
+| Suite | BEFORE | AFTER |
+| --- | --- | --- |
+| PHPUnit (same local MySQL, same command) | **394 passed** (1,423 assertions), 61.0 s | **405 passed** (1,515 assertions), 51.4 s — exit 0 |
+| frontend vitest | **85 passed** (5 files) | **104 passed** (6 files) |
+| admin vitest | 78 passed (7 files) | **78 passed** (7 files) |
+| Playwright — visitor submission journeys | not re-run on HEAD here | **4/4 passed** (1.1 m) |
+| Playwright — `skills-autoplay` | — | **12/12 passed** (1.9 m) |
+| Playwright — hero edit / section visibility propagation | — | **2/2 passed** |
+| Playwright — `cms-admin-journeys` | — | **2/2 passed** |
+
+The +11 PHPUnit tests and +92 assertions are the new
+`tests/Feature/RateLimitProxyTrustTest.php` (11 tests, `PASS`). The frontend's +19 are
+`tests/unit/api-fetch.test.js` (16) and three added cases in `api-fallback-log.test.js`.
+
+The full PHPUnit suite was moved off the `.env`-configured remote database for this
+verification: pointing it at Aiven's test database took **1,392 s** for one run, which makes
+it useless as a before/after baseline and needlessly hammers a remote instance. The final
+numbers above use a throwaway local `mysqld` (`127.0.0.1:3307`, separate datadir under
+`/tmp`, no repo or `.env` change) — the same command, 394/405 tests, ~1 minute.
+
+E2E that did **not** pass, and why it is not this change (all on local fixtures/data):
+
+| Spec | Result | Cause |
+| --- | --- | --- |
+| `storage-orphans-journey.spec.js` (2 tests) | failed | `Test timeout of 60000ms exceeded` inside `helpers.waitForAdminPage` — the admin server on this box is slower than the helper's budget; unrelated to rate limiting or caching |
+| `cms-snapshots.spec.js` (2 tests) | failed | baseline image/hash mismatches against the reconstructed local content set |
+| `visual-snapshots.spec.js` | 1 passed, 2 failed, 3 skipped | `public homepage` and `hero section viewport` differ from their Oct-2 baselines, for the same local-content reason Part K already documented; the admin snapshots are skipped without credentials |
+
+---
+
+## Hypotheses
+
+| # | Hypothesis | Verdict | Evidence |
+| --- | --- | --- | --- |
+| H1 | The frontend's server-side fetch has no ceiling, so one unanswered API request holds the render — and a build — open indefinitely | **CONFIRMED** | `lib/api.js` on HEAD passes no `signal`/timeout. Against a hung stub, HEAD's build was still running at 158 s with 0 fallbacks; fixed build 30 s, 13 `timeout` fallbacks. Served page: 7 ms with fallback. `api-resilience-check.mjs` was written to guard exactly this |
+| H2 | The per-visitor limits are really one global bucket because no proxy is trusted | **CONFIRMED** | `$request->ip()` → `10.0.0.5` (the balancer) on HEAD, `203.0.113.9` (the visitor) after. 11 distinct visitors → 10 accepted + 1 refused before, 11 accepted after |
+| H3 | Inline `throttle:10,1` / `throttle:30,1` collide, so one endpoint's traffic refuses another's | **CONFIRMED** | 6 `POST /track` then 6 `POST /contact-messages` from one visitor: `4×422 + 2×429` before, `6×422` after. Key is `sha1(domain|ip)`, which excludes the route. Fixed with named limiters (`sha1(name|ip)`) |
+| H4 | Public reads had no budget, so a single client could spend the container | **CONFIRMED** | 121 one-IP reads → `200 x121` before; `200 x120, 429 x1` after, with a second IP unaffected |
+| H5 | Visitors see 429s because the frontend retries in a loop / storming the API | **REFUTED** | HEAD has no retry logic at all (only a bare `fetch`). The fix retries **once**, and only when `Retry-After ≤ 1 s`; a 60 s `Retry-After` falls back immediately and reports `retry_after_ms: 60000` |
+| H6 | The API is slow because of the database / remote hosting | **REFUTED** as the cause of the hang | The hang reproduces with a stub API and no database involved; `/settings` answers in 39 ms locally; the whole PHPUnit suite is ~51 s on a local MySQL (vs 1,392 s over the remote link — that is a *test-environment* cost, not a production cause) |
+| H7 | Cloudflare's own edge limiting is what visitors actually hit | **NOT VERIFIED** (no production access) | The fix makes it distinguishable rather than guessing: `/api-health` reports `api_status` and `retry_after_ms`, and the `api_fallback` log line carries `reason` (`http_429` / `timeout` / `http_5xx` / `network_error`) |
+| H8 | Missing ISR `revalidate` meant every render re-fetched everything | **REFUTED** | HEAD already sends `next: { revalidate: 60 }`; the value is unchanged. What the fix adds is the abort signal, the 429 handling, and `s-maxage=300` so the edge can answer instead of the origin |
+
+---
+
+## Files changed
+
+| File | Change |
+| --- | --- |
+| `portfolio-backend/config/trustedproxy.php` | **new** — the trusted proxy list: Cloudflare's published ranges plus the literal `REMOTE_ADDR` (Render's balancer, whose address is not knowable up front). Deliberately not `'*'`, with the reasoning written down |
+| `portfolio-backend/bootstrap/app.php` | `$middleware->trustProxies(headers: X-Forwarded-For, Host, Port, Proto)`; `X-Forwarded-Prefix` deliberately excluded |
+| `portfolio-backend/app/Providers/AppServiceProvider.php` | three named limiters keyed on `$request->ip()`: `public-read` 120/min, `public-write` 10/min, `click-tracking` 30/min |
+| `portfolio-backend/routes/api.php` | the 11 public GETs move into `middleware(['throttle:public-read', PublicCacheHeaders::class])`; the forms move to `throttle:public-write` (same 10/min); `/track` moves to `throttle:click-tracking` (same 30/min) |
+| `portfolio-backend/app/Http/Middleware/PublicCacheHeaders.php` | **new** — `public, max-age=60, s-maxage=300, stale-while-revalidate=300` on successful GETs only, so a 429 or an error is never cached |
+| `portfolio-backend/tests/Feature/RateLimitProxyTrustTest.php` | **new** — 11 tests pinning proxy trust (including that a *forged* `X-Forwarded-For` prefix cannot mint a bucket), per-visitor buckets, the login/form/track budgets, and the cache headers |
+| `portfolio-backend/scripts/rate-limit-check.sh` | **new** — write-free probe of a running API: proxy resolution, bucket isolation, strict limits. Exit 0/1 |
+| `portfolio-backend/tests/Feature/ClickTrackingTest.php` | asserts the named `throttle:click-tracking` instead of the inline `throttle:30,1` |
+| `portfolio-backend/tests/Feature/PublicSubmissionIntegrationTest.php` | the rate-limit test's expectation/comment follows the limiter rename (numbers unchanged) |
+| `portfolio-backend/BACKEND-SETUP.md` | new § *Rate limiting and proxy trust*: trusted proxies, which limiter protects what, cache headers, hand-check recipe |
+| `portfolio-frontend/lib/api.js` | `AbortSignal.timeout(8000)` on every server-side fetch; `Retry-After` parsing and one bounded retry; `reason`/`retry_after_ms` in the `api_fallback` line; new `probeApi()` |
+| `portfolio-frontend/app/api-health/route.js` | reports `api_status`, `api_response_ms`, and `retry_after_ms`, with a 429-specific hint |
+| `portfolio-frontend/tests/unit/api-fetch.test.js` | **new** — 16 tests: timeout fallback, the shipped ceiling, 429 with/without `Retry-After`, the long-wait refusal, single-retry, request shape, `parseRetryAfter`, `probeApi` |
+| `portfolio-frontend/tests/unit/api-fallback-log.test.js` | three cases: `timeout` classification, `retry_after_ms` present, and its *absence* being meaningful |
+| `portfolio-frontend/scripts/api-resilience-check.mjs` | **new** — drives a real `next build` + `next start` against a 429 stub and a hung stub |
+| `project-run.md` | test-coverage note (four PHPUnit suites, the E2E suite, the probe script) and two troubleshooting rows: "every visitor shares one bucket" and a 429 on `/api/settings` |
+
+## Expected impact
+
+- **A hung or misbehaving API can no longer hold a render or a build open.** Worst case is
+  one 8 s timeout per endpoint, then fallback content — measured, not assumed (30 s build
+  instead of "never").
+- **Limits are per visitor.** One visitor's burst no longer refuses anybody else, and one
+  endpoint's traffic no longer refuses another's.
+- **Fewer origin requests.** `s-maxage=300` lets Cloudflare answer repeat reads, so several
+  visitors (or several renders) inside those five minutes are served at the edge instead of
+  each spending the origin's budget — latency and the chance of tripping the 120/min limit
+  both drop. The 60 s ISR window is unchanged.
+- **The next incident is diagnosable in one call.** `curl /api-health` says whether the API
+  answered, with what status, how fast, and what `Retry-After` it asked for.
+
+## Prevention
+
+- `tests/Feature/RateLimitProxyTrustTest.php` (11 tests) fails if the proxy list is emptied,
+  if a bucket stops being per-visitor, if a forged `X-Forwarded-For` starts winning, if a
+  limit is loosened, or if a 429 ever becomes cacheable.
+- `tests/unit/api-fetch.test.js` (16 tests) fails if the timeout is dropped, if a 429 stops
+  being handled, if a short `Retry-After` stops being honoured (or a long one starts being),
+  or if a retry loop appears.
+- `portfolio-backend/scripts/rate-limit-check.sh` answers the question from outside the
+  process, against a running API: `./scripts/rate-limit-check.sh` (exit 0 = all expectations
+  met). This is the command to run after any change to proxies, hosting, or limits.
+- `portfolio-frontend/scripts/api-resilience-check.mjs` re-creates the production incident
+  end to end (`node scripts/api-resilience-check.mjs`, exit 0 when every scenario behaves).
+- `/api-health` is the runtime check to point an uptime monitor at: `503` means the public
+  site is serving fallback content, and `api_status` / `retry_after_ms` say why.
+- `BACKEND-SETUP.md` § *Rate limiting and proxy trust* and the two new `project-run.md`
+  troubleshooting rows carry the reasoning to whoever hits this next.
+
+## Suggested production verification
+
+1. Deploy the backend first, then the frontend (the frontend tolerates either shape).
+2. `curl -sS -D - -o /dev/null https://api.hasibulalam.com/api/settings` — expect `200`,
+   `Cache-Control: ... public, s-maxage=300 ...`, and `X-RateLimit-Limit: 120`.
+3. Twice through Cloudflare, confirm the second read is a cache `HIT` (or that origin
+   request logs show one request), i.e. the edge is doing the work.
+4. `curl -s https://hasibulalam.com/api-health` — expect `200`/`"source":"live"` and a small
+   `api_response_ms`. Then, with the API deliberately stopped, confirm it returns `503`
+   within ~8 s rather than the page hanging.
+5. From two different networks (or two `X-Forwarded-For` values via a proxy), exhaust the
+   contact form on one and confirm the other still succeeds — the per-visitor property is
+   the one that cannot be verified from a single client.
+6. Watch the public site's logs for `api_fallback` and its `reason`; `http_429` with a large
+   `retry_after_ms` means an upstream limiter (Cloudflare included), `timeout` means the
+   container, `http_5xx` means the application.
+7. If `TRUSTED_PROXIES` is ever set in the Render dashboard, keep it a real list (never `*`):
+   with Cloudflare in front, `X-Forwarded-For` is appended to, so trusting everything returns
+   the client's own forgeable value and hands out a fresh bucket per request.
+
+## Limitations and honest gaps
+
+- **`scripts/api-resilience-check.mjs` cannot finish on this machine.** It wipes
+  `.next/cache` before each build to force a real render, which also discards the cached
+  Google Fonts; the refetch is then flaky here and `next/font` fails the build. The two
+  scenarios in §4 were therefore verified with the same stubs and the same builds, but with
+  the cache preserved. In CI (with reliable network) the harness should be run as written —
+  I have not proven it green.
+- **H7 (Cloudflare's own limiting) is not verified** — there is no production access here.
+- The `storage-orphans`, `cms-snapshots`, and `visual-snapshots` failures are not caused by
+  this change — it touches neither the admin app nor the specs — and are local-data/timing
+  artifacts (table in §5). I did not repair them: none of them exercises rate limiting or
+  caching.
+- The rate-limit verification ran against a **local** API. It proves the middleware wiring and
+  the keys; it does not prove Render's balancer sets the headers the way the fixtures assume.
+- **There is no working JS lint gate.** `npm run lint` in either Next.js app is `eslint .`, but
+  ESLint is neither installed (`sh: 1: eslint: not found`, exit 127) nor declared in either
+  `package.json`, and no `eslint.config.*` exists — an `npx eslint` run therefore fails with
+  "couldn't find an eslint.config.* file". Pre-existing and project-wide (neither
+  `package.json` is part of this change), and it means the new frontend files were checked by
+  tests only. On the PHP side `./vendor/bin/pint --test` is clean on every changed/new file
+  except one **pre-existing** violation in `PublicSubmissionIntegrationTest.php`
+  (`fully_qualified_strict_types`, reproduced on a copy of HEAD's version), which was left
+  alone rather than reformatting code this change did not write.
+
+## Safety
+
+No deploy, no commit, no push, and no `.env` edit — every local run used process-environment
+overrides (`DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `MYSQL_ATTR_SSL_CA=`) against a
+throwaway `mysqld` on `127.0.0.1:3307` with its own datadir under `/tmp`. Production
+(`defaultdb`) was never written to; the only remote reads were a `mysqldump --single-transaction`
+against the dev database (abandoned as too slow, and read-only) and one PHPUnit run that
+`RefreshDatabase` migrated against the **designated remote test database**
+(`portfolio_backend_test`) before the suite was moved to the local instance — that database is
+disposable by design, but it is remote, so it is recorded here.
+
+This report contains **no** database password, R2 key, token, or connection string. The
+Cloudflare ranges in `config/trustedproxy.php` are public data; the local test credentials it
+implicitly relies on (`root`, no password, `127.0.0.1:3307`) are a scratch instance created for
+this run and are not part of the project.
