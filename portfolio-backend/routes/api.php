@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\UploadController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClickTrackingController;
 use App\Http\Controllers\PublicController;
+use App\Http\Middleware\PublicCacheHeaders;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -54,21 +55,41 @@ Route::middleware('auth:sanctum')->group(function () {
 // ---------------------------------------------------------------------------
 // Public — read-only content for portfolio-frontend, plus the two visitor forms
 // ---------------------------------------------------------------------------
-Route::get('/settings', [PublicController::class, 'settings']);
-Route::get('/section-visibility', [PublicController::class, 'sectionVisibility']);
-Route::get('/hero', [PublicController::class, 'hero']);
-Route::get('/about', [PublicController::class, 'about']);
-Route::get('/skills', [PublicController::class, 'skills']);
-Route::get('/timeline', [PublicController::class, 'timeline']);
-Route::get('/projects', [PublicController::class, 'projects']);
-Route::get('/projects/{slug}', [PublicController::class, 'project']);
-Route::get('/api-showcases', [PublicController::class, 'apiShowcases']);
-Route::get('/testimonials', [PublicController::class, 'testimonials']);
-Route::get('/contact-info', [PublicController::class, 'contactInfo']);
+//
+// Reads carry two middlewares that only make sense together:
+//
+//   throttle:public-read     120/min per *client* IP, defined in
+//                            AppServiceProvider. Generous on purpose — one
+//                            homepage render fetches ten of these endpoints —
+//                            but it still needs the trusted-proxy setup in
+//                            bootstrap/app.php to be per visitor at all.
+//   PublicCacheHeaders       lets the Cloudflare edge and the visitor's
+//                            browser reuse a response instead of asking this
+//                            container again (Laravel defaults to
+//                            `no-cache, private`, which forbids it).
+//
+// Neither belongs on the write routes below: those are per-visitor actions with
+// their own stricter limits, and their responses must never be cached.
+Route::middleware(['throttle:public-read', PublicCacheHeaders::class])->group(function () {
+    Route::get('/settings', [PublicController::class, 'settings']);
+    Route::get('/section-visibility', [PublicController::class, 'sectionVisibility']);
+    Route::get('/hero', [PublicController::class, 'hero']);
+    Route::get('/about', [PublicController::class, 'about']);
+    Route::get('/skills', [PublicController::class, 'skills']);
+    Route::get('/timeline', [PublicController::class, 'timeline']);
+    Route::get('/projects', [PublicController::class, 'projects']);
+    Route::get('/projects/{slug}', [PublicController::class, 'project']);
+    Route::get('/api-showcases', [PublicController::class, 'apiShowcases']);
+    Route::get('/testimonials', [PublicController::class, 'testimonials']);
+    Route::get('/contact-info', [PublicController::class, 'contactInfo']);
+});
 
 // Visitor submissions. Rate limited because these are unauthenticated writes
-// reachable by anyone on the internet.
-Route::middleware('throttle:10,1')->group(function () {
+// reachable by anyone on the internet: 10/minute per client IP (see
+// AppServiceProvider). Strict on purpose, and unchanged from the throttle:10,1
+// this replaced — only the bucket moved, so that a burst of tracked clicks can
+// no longer spend this budget.
+Route::middleware('throttle:public-write')->group(function () {
     Route::post('/contact-messages', [PublicController::class, 'storeContactMessage']);
     Route::post('/meeting-requests', [PublicController::class, 'storeMeetingRequest']);
 });
@@ -77,9 +98,10 @@ Route::middleware('throttle:10,1')->group(function () {
 // visitor — and throttled harder than the forms because every page view can
 // fire it and there is nothing a client legitimately needs thirty times a
 // minute. Accepts only a fixed allow-list of event types; anything else is a
-// 422, never a row.
+// 422, never a row. 30/minute per client IP, under its own key so it cannot
+// consume the form budget.
 Route::post('/track', [ClickTrackingController::class, 'store'])
-    ->middleware('throttle:30,1');
+    ->middleware('throttle:click-tracking');
 
 // ---------------------------------------------------------------------------
 // Admin — every route below requires a valid Sanctum token

@@ -162,6 +162,96 @@ same-origin` applies to `/api/*` responses; uploads are served from R2 (or the
 local storage symlink, which the web server serves without these headers), so
 frontends can still display them cross-origin.
 
+## Rate limiting and proxy trust
+
+Every limit in this app is per **client IP**, and that is only meaningful
+because the proxies in front of the app are trusted. The two halves are
+separate pieces of configuration, and getting one of them wrong is how this
+project took a production outage: all visitors shared a single bucket, the
+first few requests of the minute spent it, and everyone else was refused.
+
+### Trusted proxies
+
+Every request arrives through two hops — Cloudflare, then Render's load
+balancer — so `REMOTE_ADDR` is a proxy address, never a visitor. `bootstrap/app.php`
+therefore trusts the proxies listed in `config/trustedproxy.php`, which is
+Cloudflare's published egress ranges plus the literal `REMOTE_ADDR` (Laravel
+replaces that at request time with whoever terminated the connection: Render's
+balancer, whose address is not knowable up front). Only the `X-Forwarded-*`
+headers are trusted; `X-Forwarded-Prefix` is not, because nothing here rewrites
+paths.
+
+With those trusted, Symfony resolves the client IP by walking
+`X-Forwarded-For` from the right and skipping our own proxies, so the value a
+client wrote is always further left and can never become the answer.
+
+Deliberately **not** `'*'`. Cloudflare appends to a client-supplied
+`X-Forwarded-For` rather than replacing it, so a trust-everything list makes the
+leftmost — client-forged — address the client IP, and anyone can mint a fresh
+bucket with every request.
+
+| Setting | Meaning |
+|---|---|
+| `TRUSTED_PROXIES` (env) | Comma-separated IPs/CIDRs to trust, or `REMOTE_ADDR`. Unset ⇒ Cloudflare's ranges + `REMOTE_ADDR`. |
+
+Set it in the Render dashboard (it is read when the config is cached at
+container start). If Cloudflare's ranges change and the list goes stale, the
+failure is degraded rather than broken: requests from an unlisted range resolve
+to that range's address and share one bucket again — the same behaviour as
+trusting nothing.
+
+### Which limiter protects what
+
+| Limiter | Routes | Budget | Key |
+|---|---|---|---|
+| `public-read` | every public `GET /api/*` | 120/min | client IP |
+| `public-write` | `POST /api/contact-messages`, `POST /api/meeting-requests` | 10/min | client IP |
+| `click-tracking` | `POST /api/track` | 30/min | client IP |
+| (login, in `AuthService`) | `POST /api/login` | 5 failed attempts/min | `email` + client IP |
+
+All four live in `app/Providers/AppServiceProvider.php` except the login one,
+which stays in `AuthService` because it has to be per-credential rather than
+per-route.
+
+They are **named** limiters rather than inline `throttle:10,1` specs for a
+reason: an inline spec keys its bucket on `sha1(domain|ip)` alone — the *same*
+key for every route that uses one — so ten contact-form posts used to spend the
+click-tracking budget too, and thirty tracked clicks locked a visitor out of the
+contact form. A named limiter keys on `sha1(name|ip)`, so each limit protects
+only what it names. Budgets were carried over unchanged.
+
+`public-read` is deliberately generous: one homepage render fetches ten
+endpoints at once, and the 60s ISR revalidation does it again, so the limit has
+to clear that with room to spare while still stopping one client from spending
+the whole (free-tier, single-worker) container.
+
+`tests/Feature/RateLimitProxyTrustTest.php` pins both halves — that the proxies
+are trusted and a forged prefix cannot win, and that each limit is keyed per
+visitor with the strict budgets intact.
+
+### Cache headers on public reads
+
+`app/Http/Middleware/PublicCacheHeaders.php` marks successful public reads
+`public, max-age=60, s-maxage=300, stale-while-revalidate=300`. Laravel's default
+is `no-cache, private`, which forbids every intermediary from storing anything:
+the frontend paid a full origin round trip for content that had not changed in
+weeks, and every one of those requests was a request that could be rate limited.
+`max-age` covers the Next.js Data Cache and a browser reading the API directly;
+`s-maxage` is what lets the Cloudflare edge answer repeat reads without touching
+the container. Errors — including 429s — are left uncacheable on purpose.
+
+### Checking it by hand
+
+`scripts/rate-limit-check.sh` probes a running API and prints a status-code
+histogram per scenario: the resolved client IP for a forwarded request, a
+public-read bucket exhausted by one visitor while another is unaffected, and the
+strict form / tracking limits. It is write-free (every POST it sends fails
+validation), so it is safe against a development database — never production.
+
+```bash
+API_URL=http://127.0.0.1:8000/api ./scripts/rate-limit-check.sh
+```
+
 ## File uploads
 
 `POST /api/admin/upload` accepts a single `file` field and returns
@@ -302,9 +392,13 @@ GET  /api/hero              GET  /api/api-showcases
 GET  /api/about             GET  /api/testimonials
 GET  /api/skills            GET  /api/contact-info
 GET  /api/timeline
-POST /api/contact-messages     (rate limited, 10/min)
-POST /api/meeting-requests     (rate limited, 10/min)
+POST /api/contact-messages     (rate limited, 10/min per client IP)
+POST /api/meeting-requests     (rate limited, 10/min per client IP)
+POST /api/track                (rate limited, 30/min per client IP)
 ```
+
+Public reads are limited to 120/min per client IP and served with shared-cache
+headers — see [Rate limiting and proxy trust](#rate-limiting-and-proxy-trust).
 
 Auth:
 
@@ -348,5 +442,9 @@ against, so point it at a development database, not production.
    `deploy/nginx-portfolio-api.conf.example` / `deploy/apache-portfolio-api.conf.example`
 4. Change the seeded admin password
 5. Configure R2, and verify a Resend domain so mail reaches real recipients (see [Email](#email))
-6. `php artisan config:cache route:cache`
-7. Serve `public/` over HTTPS
+6. Confirm the proxy chain: the API must be reached through Cloudflare and
+   Render's balancer. If either hop changes, set `TRUSTED_PROXIES` accordingly
+   and re-run `scripts/rate-limit-check.sh` — see
+   [Rate limiting and proxy trust](#rate-limiting-and-proxy-trust)
+7. `php artisan config:cache route:cache`
+8. Serve `public/` over HTTPS

@@ -107,7 +107,12 @@ class ClickTrackingTest extends TestCase
 
         $middleware = $route->gatherMiddleware();
 
-        $this->assertContains('throttle:30,1', $middleware);
+        // A named limiter rather than an inline `throttle:30,1`: the budget is
+        // still 30/minute (AppServiceProvider::CLICK_TRACKING_PER_MINUTE), but
+        // the bucket is now keyed on the limiter's name as well as the client
+        // IP, so sharing the inline key with the visitor forms can no longer
+        // let one endpoint's traffic refuse the other's.
+        $this->assertContains('throttle:click-tracking', $middleware);
         $this->assertNotContains('auth:sanctum', $middleware);
     }
 

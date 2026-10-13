@@ -20,6 +20,29 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Render's load balancer and Cloudflare sit between the visitor and this
+        // container, so REMOTE_ADDR is always the last proxy. Without the list
+        // below, `$request->ip()` returns that proxy's address for every
+        // visitor: every IP-keyed rate limiter then shares one bucket, the
+        // first few requests spend it, and everyone else gets a 429. The list
+        // (and why it is shaped that way) lives in config/trustedproxy.php.
+        //
+        // Only the X-Forwarded-* headers are trusted. X-Forwarded-Prefix is
+        // deliberately left out: nothing here rewrites paths, so there is no
+        // reason to let a header do it.
+        // `at` is deliberately not passed here: this closure runs before the
+        // container is available (config() is not bound yet), and the
+        // middleware's own fallback — config('trustedproxy.proxies') — is read
+        // at request time, which is where the TRUSTED_PROXIES override belongs
+        // anyway. Declaring the headers here keeps the trusted header set
+        // explicit rather than inherited.
+        $middleware->trustProxies(
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO,
+        );
+
         // CORS policy enforcement. Prepended so this first-party layer runs
         // outermost and has the final word on ACAO/credentials; Laravel's
         // built-in HandleCors middleware (framework default, runs inside this)

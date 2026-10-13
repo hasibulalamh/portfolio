@@ -373,7 +373,8 @@ class PublicSubmissionIntegrationTest extends TestCase
     public function test_the_endpoint_is_rate_limited(string $endpoint, string $table): void
     {
         // Unauthenticated writes reachable by anyone on the internet. The group
-        // carries throttle:10,1, so the eleventh attempt in a minute is refused.
+        // carries throttle:public-write (10/minute per client IP), so the
+        // eleventh attempt in a minute is refused.
         Mail::fake();
 
         for ($i = 0; $i < 10; $i++) {
