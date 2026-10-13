@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\UploadController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ClickTrackingController;
 use App\Http\Controllers\PublicController;
+use App\Http\Middleware\ProbeRequestDiagnostics; // TEMP-DIAGNOSTIC
 use App\Http\Middleware\PublicCacheHeaders;
 use Illuminate\Support\Facades\Route;
 
@@ -71,7 +72,8 @@ Route::middleware('auth:sanctum')->group(function () {
 // Neither belongs on the write routes below: those are per-visitor actions with
 // their own stricter limits, and their responses must never be cached.
 Route::middleware(['throttle:public-read', PublicCacheHeaders::class])->group(function () {
-    Route::get('/settings', [PublicController::class, 'settings']);
+    Route::get('/settings', [PublicController::class, 'settings'])
+        ->middleware(ProbeRequestDiagnostics::class); // TEMP-DIAGNOSTIC
     Route::get('/section-visibility', [PublicController::class, 'sectionVisibility']);
     Route::get('/hero', [PublicController::class, 'hero']);
     Route::get('/about', [PublicController::class, 'about']);
